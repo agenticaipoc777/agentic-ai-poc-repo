@@ -8,7 +8,7 @@ resource "google_bigquery_dataset" "analytics_v3" {
   location                   = var.region
   delete_contents_on_destroy = true 
 
-  # Safeguard: Prevents cloud state friction by ignoring external metadata drifts
+  # Safeguard: Prevents cloud state friction by ignoring external metadata shifts
   lifecycle {
     ignore_changes = [
       access
@@ -25,8 +25,8 @@ resource "google_bigquery_dataset_iam_member" "svbelose_viewer" {
     "svbelose@gmail.com",
     "Hmmalhotra12@gmail.com",
     "reksaquarian@gmail.com",
-    "khushboosamar1989@gmail.com"
-    
+    "khushboosamar1989@gmail.com",
+    "Iyappan.cpg@gmail.com"
   ])
 
   dataset_id = google_bigquery_dataset.analytics_v3.dataset_id
