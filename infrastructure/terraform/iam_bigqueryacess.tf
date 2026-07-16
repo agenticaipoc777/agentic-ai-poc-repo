@@ -21,11 +21,12 @@ resource "google_bigquery_dataset" "analytics_v3" {
 # ====================================================================
 resource "google_bigquery_dataset_iam_member" "svbelose_viewer" {
   for_each = toset([
+    "dm.maddali@gmail.com",
     "svbelose@gmail.com",
     "Hmmalhotra12@gmail.com",
     "reksaquarian@gmail.com",
-    "khushboosamar1989@gmail.com",
-    "dm.maddali@gmail.com"
+    "khushboosamar1989@gmail.com"
+    
   ])
 
   dataset_id = google_bigquery_dataset.analytics_v3.dataset_id
