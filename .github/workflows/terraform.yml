@@ -1,0 +1,38 @@
+name: "Automated Architecture Deployment"
+
+on:
+  push:
+    branches:
+      - main
+      - feature/bigquery-eu-integration
+
+jobs:
+  terraform:
+    name: "Deploy State Logic"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./infrastructure/terraform
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform Binary
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.0
+
+      - name: Authenticate against Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }} # Links securely to your saved secret
+
+      - name: Initialize Workspace Environment
+        run: terraform init
+
+      - name: Validate Logic Consistency
+        run: terraform validate
+
+      - name: Execute Live Infrastructure Rollout
+        run: terraform apply -auto-approve

@@ -1,0 +1,9 @@
+# Local backend state artifacts
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+
+# Local credential secrets
+*credentials*.json
+.env
