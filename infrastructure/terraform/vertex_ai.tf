@@ -5,9 +5,9 @@
 # your zipped Python agent packages, requirements.txt, and dependencies.
 resource "google_storage_bucket" "adk_staging" {
   project       = var.project_id
-  name          = "${var.project_id}-eu-adk-staging-bucket" 
-  location      = var.region                                # Inherits strict multi-region "EU" configuration
-  force_destroy = true                                      # Allows easy automatic cleanup of old deployment artifacts
+  name          = "${var.project_id}-eu-adk-staging-bucket"
+  location      = var.region # Inherits strict multi-region "EU" configuration
+  force_destroy = true       # Allows easy automatic cleanup of old deployment artifacts
 
   uniform_bucket_level_access = true
 
