@@ -6,7 +6,7 @@ resource "google_bigquery_dataset" "analytics_v3" {
   friendly_name              = "Analytics Dataset V3"
   description                = "Isolated dataset layer for external readers"
   location                   = var.region
-  delete_contents_on_destroy = true 
+  delete_contents_on_destroy = true
 
   # Safeguard: Prevents cloud state friction by ignoring external metadata shifts
   lifecycle {
