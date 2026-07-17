@@ -63,3 +63,24 @@ resource "google_project_iam_member" "agent_metadata_viewer" {
   member  = "serviceAccount:${google_service_account.adk_agent_runner.email}"
 }
 
+# ====================================================================
+# 4. CRITICAL MISSING RUNTIME ROLES FOR AGENT ENGINE EXECUTION
+# ====================================================================
+
+# Role 4: Storage Object Viewer
+# Allows the Agent Engine runtime to download and extract your staged 
+# python zipped agent bundles and requirements.txt from the staging bucket.
+resource "google_storage_bucket_iam_member" "agent_storage_reader" {
+  bucket = google_storage_bucket.adk_staging.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.adk_agent_runner.email}"
+}
+
+# Role 5: BigQuery Job User
+# Required alongside 'dataViewer'. It gives the agent permission to 
+# run query jobs, sort data, and execute SQL statements against analytics_v3.
+resource "google_project_iam_member" "agent_bq_job_user" {
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.adk_agent_runner.email}"
+}
