@@ -1,25 +1,35 @@
 # ====================================================================
+# CONFIGURATION MEMORY MANAGEMENT (STATE IMPORTS)
+# ====================================================================
+
+# Links the existing Google Cloud Storage bucket into Terraform state memory
+import {
+  to = google_storage_bucket.adk_staging
+  id = "agentic-ai-502518-eu-adk-staging-bucket"
+}
+
+# Links the existing custom service account into Terraform state memory
+import {
+  to = google_service_account.adk_agent_runner
+  id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
+}
+
+# ====================================================================
 # 1. ISOLATED EU DEPLOYMENT STAGING BUCKET
 # ====================================================================
-# Agent Engine uses this bucket to temporarily stage your zipped Python 
-# agent packages, requirements.txt, and dependency artifacts.
 resource "google_storage_bucket" "adk_staging" {
   project       = var.project_id
   name          = "${var.project_id}-eu-adk-staging-bucket"
-  location      = var.region # Dynamically inherits your strict multi-region "EU" configuration
-  force_destroy = true       # Permits clean, automated deletion of legacy agent staging builds
+  location      = var.region 
+  force_destroy = true       
 
   uniform_bucket_level_access = true
-
-  # Safety loop dependency guard against your central services matrix
-  depends_on = [google_project_service.services]
+  depends_on                  = [google_project_service.services]
 }
 
 # ====================================================================
 # 2. CUSTOM SERVICE ACCOUNT (THE RUNTIME AGENT IDENTITY)
 # ====================================================================
-# Dedicated execution identity for your deployed ADK agents.
-# This prevents running agents under high-privilege default project owners.
 resource "google_service_account" "adk_agent_runner" {
   project      = var.project_id
   account_id   = "adk-agent-runner"
@@ -52,3 +62,4 @@ resource "google_project_iam_member" "agent_metadata_viewer" {
   role    = "roles/viewer"
   member  = "serviceAccount:${google_service_account.adk_agent_runner.email}"
 }
+
