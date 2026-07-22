@@ -34,3 +34,34 @@ resource "google_bigquery_dataset_iam_member" "svbelose_viewer" {
   member     = "user:${each.value}"
 }
 
+# =======================================================================================================================================================
+# 3. DYNAMICALLY FETCH ACTIVE GCP PROJECT METADATA, grantinf acess to SA serviceAccount:service-661224241135@gcp-sa-aiplatform-re.iam.gserviceaccount.com
+# ========================================================================================================================================
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
+# ====================================================================
+# 4. DEFINE THE GOOGLE-MANAGED VERTEX REASONING ENGINE SERVICE AGENT
+# ====================================================================
+locals {
+  vertex_sa_member = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+# ====================================================================
+# 5. AUTOMATE BIGQUERY IAM ROLE BINDINGS
+# ====================================================================
+
+# Grant dataset discovery and table viewing access
+resource "google_project_iam_member" "vertex_bq_viewer" {
+  project = var.project_id
+  role    = "roles/bigquery.dataViewer"
+  member  = local.vertex_sa_member
+}
+
+# Grant query job execution access
+resource "google_project_iam_member" "vertex_bq_job_user" {
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = local.vertex_sa_member
+}

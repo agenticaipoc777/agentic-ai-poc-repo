@@ -20,8 +20,8 @@ import {
 resource "google_storage_bucket" "adk_staging" {
   project       = var.project_id
   name          = "${var.project_id}-eu-adk-staging-bucket"
-  location      = var.region 
-  force_destroy = true       
+  location      = var.region
+  force_destroy = true
 
   uniform_bucket_level_access = true
   depends_on                  = [google_project_service.services]
