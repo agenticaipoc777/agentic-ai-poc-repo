@@ -27,18 +27,17 @@ resource "google_project_service" "services" {
     "cloudresourcemanager.googleapis.com",
     "discoveryengine.googleapis.com",
 
-    # --- 🔍 ORANGE-MARKED AGENT PLATFORM APIS ADDED BELOW ---
-    "apphub.googleapis.com",                # Topology / App Hub mapping
-    "apikeys.googleapis.com",               # Cloud API Registry / Keys
-    "iamcredentials.googleapis.com",        # IAM Connectors / Token exchanges
-    "iap.googleapis.com",                   # Cloud Identity-Aware Proxy (IAP)
-    "modelarmor.googleapis.com",            # Model Armor safety firewall layers
-    "networksecurity.googleapis.com",       # Network Security configurations
-    "networkservices.googleapis.com",       # Network Services routing fabrics
-    "observability.googleapis.com",         # Cloud Observability / Trace frameworks
-    "lifesciences.googleapis.com",          # App Lifecycle Manager backbone dependencies
-    "securitycommandcenter.googleapis.com", # Security Command Center (SCC) auditing
-    "texttospeech.googleapis.com"           # Cloud Text-to-Speech vocalization integrations
+    # --- 🔍 APPROVED AGENT PLATFORM APIS ---
+    "apphub.googleapis.com",          # App Topology / App Hub Mapping
+    "apikeys.googleapis.com",         # Cloud API Registry / API Credentials Management
+    "iamcredentials.googleapis.com",  # IAM Connectors / Secure Runtime Token Exchanges
+    "iap.googleapis.com",             # Identity-Aware Proxy (IAP) Core Framework
+    "modelarmor.googleapis.com",      # Model Armor Enterprise Safety Guardrail Engine
+    "networksecurity.googleapis.com", # Network Security Framework Boundaries
+    "networkservices.googleapis.com", # Network Services Control Planes
+    "observability.googleapis.com",   # Multi-Cloud Unified Observability System
+    "texttospeech.googleapis.com",    # Cloud Text-to-Speech Vocalization Components
+    "securitycenter.googleapis.com"   # Security Command Center UI 
   ])
 
   project                    = var.project_id
