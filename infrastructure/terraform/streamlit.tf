@@ -1,9 +1,7 @@
-# 1. Provision Artifact Registry repository to host your custom Streamlit image
-resource "google_artifact_registry_repository" "app_repo" {
+# 1. READ the existing Artifact Registry repository (Prevents 409 Duplicate Errors in CI/CD)
+data "google_artifact_registry_repository" "app_repo" {
   location      = "europe-west1"
   repository_id = "streamlit-apps"
-  description   = "Docker repository for Streamlit frontend apps"
-  format        = "DOCKER"
 }
 
 # 2. Provision the serverless Cloud Run container service1
