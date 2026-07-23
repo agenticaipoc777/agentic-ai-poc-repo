@@ -6,7 +6,7 @@ resource "google_artifact_registry_repository" "app_repo" {
   format        = "DOCKER"
 }
 
-# 2. Provision the serverless Cloud Run container service
+# 2. Provision the serverless Cloud Run container service1
 resource "google_cloud_run_v2_service" "streamlit_service" {
   name     = "bq-analytics-frontend"
   location = "europe-west1"
