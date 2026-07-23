@@ -4,7 +4,7 @@ data "google_artifact_registry_repository" "app_repo" {
   repository_id = "streamlit-apps"
 }
 
-# 2. RESTORED: Provision and maintain the serverless Cloud Run container service
+# 2. Provision and maintain the serverless Cloud Run container service
 resource "google_cloud_run_v2_service" "streamlit_service" {
   name     = "bq-analytics-frontend"
   location = "europe-west1"
@@ -27,18 +27,18 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
     }
   }
 
-  # Crucial safety flag for CI/CD environments to bypass conflict triggers
   lifecycle {
     ignore_changes = [ingress]
   }
 }
 
-# 3. FIXED PUBLIC ACCESS: Grants public invoke permissions safely at the project level 
-# (Bypasses the restrictive 403 run.services.setIamPolicy service-level constraint)
-resource "google_project_iam_member" "public_run_invoker" {
-  project = "agentic-ai-502518"
-  role    = "roles/run.invoker"
-  member  = "allUsers"
+# 3. FIXED PUBLIC ACCESS: Service-specific target binding bypasses project-level restrictions
+resource "google_cloud_run_v2_service_iam_binding" "public_access" {
+  project    = google_cloud_run_v2_service.streamlit_service.project
+  location   = google_cloud_run_v2_service.streamlit_service.location
+  name       = google_cloud_run_v2_service.streamlit_service.name
+  role       = "roles/run.invoker"
+  members    = ["allUsers"]
 }
 
 # 4. CRITICAL IAM: Grant Vertex AI User permissions to your Agent Service Account
