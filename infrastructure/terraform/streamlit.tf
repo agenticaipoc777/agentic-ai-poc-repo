@@ -12,7 +12,6 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
 
   template {
     containers {
-      # FIXED: Added the mandatory "data." prefix to reference the data block configuration properly
       image = "europe-west1-docker.pkg.dev/agentic-ai-502518/${data.google_artifact_registry_repository.app_repo.repository_id}/streamlit-frontend:latest"
 
       ports {
@@ -37,9 +36,9 @@ resource "google_cloud_run_v2_service_iam_member" "public_access" {
   member   = "allUsers"
 }
 
-# 4. CRITICAL IAM: Grant Vertex AI User permissions to your Agent Service Account
+# 4. CRITICAL IAM: Fixed explicit Service Account formatting to prevent cloud API rejection
 resource "google_project_iam_member" "vertex_access" {
   project = "agentic-ai-502518"
   role    = "roles/aiplatform.user"
-  member  = "serviceAccount:service-661224241135@://gserviceaccount.com"
+  member  = "serviceAccount:service-661224241135@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
 }
