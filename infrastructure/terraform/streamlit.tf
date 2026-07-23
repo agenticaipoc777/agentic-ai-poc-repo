@@ -10,7 +10,7 @@ import {
   id = "projects/agentic-ai-502518/locations/europe-west1/services/bq-analytics-frontend"
 }
 
-# 3. Provision and maintain the serverless Cloud Run container service
+# 3. Provision and maintain the serverless Cloud Run container service resources
 resource "google_cloud_run_v2_service" "streamlit_service" {
   name     = "bq-analytics-frontend"
   location = "europe-west1"
