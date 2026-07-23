@@ -4,7 +4,7 @@ data "google_artifact_registry_repository" "app_repo" {
   repository_id = "streamlit-apps"
 }
 
-# 2. Provision the serverless Cloud Run container service1
+# 2. Provision the serverless Cloud Run container service
 resource "google_cloud_run_v2_service" "streamlit_service" {
   name     = "bq-analytics-frontend"
   location = "europe-west1"
@@ -12,11 +12,11 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
 
   template {
     containers {
-      # Points to the built image tag in your registry
-      image = "europe-west1-docker.pkg.dev/agentic-ai-502518/${google_artifact_registry_repository.app_repo.repository_id}/streamlit-frontend:latest"
+      # FIXED: Added the mandatory "data." prefix to reference the data block configuration properly
+      image = "europe-west1-docker.pkg.dev/agentic-ai-502518/${data.google_artifact_registry_repository.app_repo.repository_id}/streamlit-frontend:latest"
 
       ports {
-        container_port = 8080 # Standard port for Streamlit apps
+        container_port = 8080
       }
 
       resources {
@@ -41,5 +41,5 @@ resource "google_cloud_run_v2_service_iam_member" "public_access" {
 resource "google_project_iam_member" "vertex_access" {
   project = "agentic-ai-502518"
   role    = "roles/aiplatform.user"
-  member  = "serviceAccount:service-661224241135@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+  member  = "serviceAccount:service-661224241135@://gserviceaccount.com"
 }
