@@ -4,7 +4,7 @@ data "google_artifact_registry_repository" "app_repo" {
   repository_id = "streamlit-apps"
 }
 
-# 2. AUTOMATIC IMPORT: Tells the CI/CD pipeline to adopt the existing Cloud Run service if it exists
+# 2. AUTOMATIC IMPORT: Adopts the existing Cloud Run service safely into CI/CD pipeline state
 import {
   to = google_cloud_run_v2_service.streamlit_service
   id = "projects/agentic-ai-502518/locations/europe-west1/services/bq-analytics-frontend"
@@ -38,16 +38,7 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   }
 }
 
-# 4. FIXED PUBLIC ACCESS: Service-specific target binding bypasses project-level restrictions
-resource "google_cloud_run_v2_service_iam_binding" "public_access" {
-  project    = google_cloud_run_v2_service.streamlit_service.project
-  location   = google_cloud_run_v2_service.streamlit_service.location
-  name       = google_cloud_run_v2_service.streamlit_service.name
-  role       = "roles/run.invoker"
-  members    = ["allUsers"]
-}
-
-# 5. CRITICAL IAM: Grant Vertex AI User permissions to your Agent Service Account
+# 4. CRITICAL IAM: Grant Vertex AI User permissions to your Agent Service Account
 resource "google_project_iam_member" "vertex_access" {
   project = "agentic-ai-502518"
   role    = "roles/aiplatform.user"
