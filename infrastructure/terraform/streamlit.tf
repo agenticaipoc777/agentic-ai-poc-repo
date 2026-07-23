@@ -18,7 +18,7 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
       image = "europe-west1-docker.pkg.dev/agentic-ai-502518/${google_artifact_registry_repository.app_repo.repository_id}/streamlit-frontend:latest"
 
       ports {
-        container_port = 8501 # Standard port for Streamlit apps
+        container_port = 8080 # Standard port for Streamlit apps
       }
 
       resources {

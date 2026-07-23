@@ -14,5 +14,5 @@ COPY . .
 
 EXPOSE 8080
 
-# Configure Streamlit flags to serve traffic over Cloud Run standard system ports
-ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=8080", "--server.address=0.0.0.0"]
+# Added CORS, XSRF, and Usage statistics bypass options to resolve the blank white screen issue
+ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=8080", "--server.address=0.0.0.0", "--server.enableCORS=false", "--server.enableXsrfProtection=false", "--browser.gatherUsageStats=false"]
