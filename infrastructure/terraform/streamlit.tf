@@ -40,7 +40,7 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   }
 }
 
-# 4. PUBLIC ACCESS: Keep your frontend live and accessible to users over the web
+# 4. PUBLIC ACCESS: Keep your frontend live and accessible to users over the web#
 resource "google_cloud_run_v2_service_iam_member" "public_access" {
   project  = "agentic-ai-502518"
   location = "europe-west1"
