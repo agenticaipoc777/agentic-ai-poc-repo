@@ -33,7 +33,7 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   }
 }
 
-# 3. FIXED & LOCKED DOWN: Your exact requested Google-Managed Service Agent identifier string
+# 3. FIXED & LOCKED DOWN: Your exact requested Google-Managed Service Agent identifier string change
 resource "google_project_iam_member" "vertex_access" {
   project = "agentic-ai-502518"
   role    = "roles/aiplatform.user"
