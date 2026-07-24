@@ -1,48 +1,154 @@
 import streamlit as st
-from google.cloud import aiplatform
+import vertexai
+from google.oauth2 import service_account
+from vertexai import agent_engines
 
-# Configure your explicit Google Cloud platform locations
-PROJECT_ID = "66122424135"
+# ==============================================================================
+# CONFIGURATION
+# ==============================================================================
+
+PROJECT_ID = "agentic-ai-502518"
 LOCATION = "europe-west1"
-REASONING_ENGINE_ID = "5739512269641875456"
 
-# Initialize Vertex AI SDK context 
-aiplatform.init(project=PROJECT_ID, location=LOCATION)
+ENGINE_RESOURCE = (
+    "projects/661224241135/"
+    "locations/europe-west1/"
+    "reasoningEngines/5739512269641875456"
+)
 
-st.set_page_config(page_title="BigQuery AI Assistant", page_icon="📊", layout="centered")
-st.title("📊 BigQuery Analytics Assistant")
-st.caption("Powered by Vertex AI Agent Runtime Reasoning Engine (ADK)")
+SERVICE_ACCOUNT_FILE = "runner_credentials.json"
 
-# Initialize session history state array
+USER_ID = "streamlit-user"
+
+# ==============================================================================
+# AUTHENTICATION
+# ==============================================================================
+
+credentials = service_account.Credentials.from_service_account_file(
+    SERVICE_ACCOUNT_FILE,
+    scopes=["https://www.googleapis.com/auth/cloud-platform"],
+)
+
+vertexai.init(
+    project=PROJECT_ID,
+    location=LOCATION,
+    credentials=credentials,
+)
+
+# ==============================================================================
+# LOAD REMOTE AGENT
+# ==============================================================================
+
+@st.cache_resource
+def load_agent():
+    return agent_engines.get(ENGINE_RESOURCE)
+
+remote_agent = load_agent()
+
+# ==============================================================================
+# CREATE SESSION (ONLY ONCE)
+# ==============================================================================
+
+if "session_id" not in st.session_state:
+
+    session = remote_agent.create_session(
+        user_id=USER_ID
+    )
+
+    # Depending on SDK version, session may be dict or object
+    if isinstance(session, dict):
+        st.session_state.session_id = session.get("id")
+    else:
+        st.session_state.session_id = getattr(session, "id")
+
+# ==============================================================================
+# STREAMLIT UI
+# ==============================================================================
+
+st.set_page_config(
+    page_title="BigQuery Analytics Agent",
+    page_icon="🤖",
+    layout="wide",
+)
+
+st.title("🤖 BigQuery Analytics Agent")
+st.caption("Powered by Vertex AI Agent Engine + Google ADK")
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display prior chat bubbles
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+# Display previous conversation
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-# Process incoming user prompts
-if user_input := st.chat_input("Ask a question about your datasets..."):
-    st.chat_message("user").markdown(user_input)
-    st.session_state.messages.append({"role": "user", "content": user_input})
+# ==============================================================================
+# CHAT
+# ==============================================================================
+
+prompt = st.chat_input("Ask something about your BigQuery data...")
+
+if prompt:
+
+    st.session_state.messages.append(
+        {
+            "role": "user",
+            "content": prompt,
+        }
+    )
+
+    with st.chat_message("user"):
+        st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        response_box = st.empty()
-        with st.spinner("Analyzing BigQuery data structures..."):
-            try:
-                # Target resource tracking link path
-                engine_path = f"projects/{PROJECT_ID}/locations/{LOCATION}/reasoningEngines/{REASONING_ENGINE_ID}"
-                agent_engine = aiplatform.ReasoningEngine(engine_path)
-                
-                # ADK engines execute queries mapping input payloads to flat dictionary results
-                response = agent_engine.query(input=user_input)
-                
-                # Extract text output safely from the response structure
-                output_text = response.get("output") if isinstance(response, dict) else str(response)
-                
-                response_box.markdown(output_text)
-                st.session_state.messages.append({"role": "assistant", "content": output_text})
-                
-            except Exception as e:
-                response_box.error(f"⚠️ Runtime Query Failed: {str(e)}")
+
+        placeholder = st.empty()
+
+        answer = ""
+
+        try:
+
+            for event in remote_agent.stream_query(
+                user_id=USER_ID,
+                session_id=st.session_state.session_id,
+                message=prompt,
+            ):
+
+                # Uncomment for debugging
+                # st.write(event)
+
+                if not isinstance(event, dict):
+                    continue
+
+                content = event.get("content")
+
+                if not content:
+                    continue
+
+                parts = content.get("parts", [])
+
+                for part in parts:
+
+                    text = part.get("text")
+
+                    if text:
+
+                        answer += text
+
+                        placeholder.markdown(answer)
+
+            if answer.strip() == "":
+                answer = "_No response returned from the agent._"
+                placeholder.markdown(answer)
+
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": answer,
+                }
+            )
+
+        except Exception as e:
+
+            st.error("Agent Engine Error")
+            st.exception(e)
