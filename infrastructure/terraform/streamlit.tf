@@ -33,16 +33,7 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   }
 }
 
-# 3. PUBLIC ACCESS: Maintained cleanly to keep your app public
-resource "google_cloud_run_v2_service_iam_member" "public_access" {
-  project  = "agentic-ai-502518"
-  location = "europe-west1"
-  name     = google_cloud_run_v2_service.streamlit_service.name
-  role     = "roles/run.invoker"
-  member   = "allUsers"
-}
-
-# 4. LOCKED DOWN: Your exact Google-Managed Vertex AI Service Agent (Absolutely Unchanged)
+# 3. FIXED & LOCKED DOWN: Your exact requested Google-Managed Service Agent identifier string
 resource "google_project_iam_member" "vertex_access" {
   project = "agentic-ai-502518"
   role    = "roles/aiplatform.user"
