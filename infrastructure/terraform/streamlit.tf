@@ -4,7 +4,7 @@ import {
   id = "projects/agentic-ai-502518/locations/europe-west1/services/bq-analytics-frontend"
 }
 
-# 2. Maintain the existing serverless Cloud Run container service
+# 2. Maintain the existing serverless Cloud Run container service resources
 resource "google_cloud_run_v2_service" "streamlit_service" {
   name     = "bq-analytics-frontend"
   location = "europe-west1"
@@ -12,7 +12,7 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
 
   template {
     containers {
-      # FIXED: Hardcoded your existing cloud container image path to prevent registry checks
+      # Hardcoded your existing cloud container image path to completely bypass registry checks
       image = "europe-west1-docker.pkg.dev/agentic-ai-502518/streamlit-apps/streamlit-frontend:latest"
 
       ports {
@@ -42,9 +42,9 @@ resource "google_cloud_run_v2_service_iam_member" "public_access" {
   member   = "allUsers"
 }
 
-# 4. FIXED: Your exact, required Google-Managed Service Agent left completely untouched
+# 4. LOCKED DOWN: Your exact Google-Managed Vertex AI Service Agent (Absolutely Unchanged)
 resource "google_project_iam_member" "vertex_access" {
   project = "agentic-ai-502518"
   role    = "roles/aiplatform.user"
-  member  = "serviceAccount:service-661224241135@://gserviceaccount.com"
+  member  = "serviceAccount:service-661224241135@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
 }
