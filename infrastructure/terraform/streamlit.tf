@@ -38,16 +38,7 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   }
 }
 
-# 4. PUBLIC ACCESS: Keep your frontend live and accessible to users over the web
-resource "google_cloud_run_v2_service_iam_member" "public_access" {
-  project  = "agentic-ai-502518"
-  location = "europe-west1"
-  name     = google_cloud_run_v2_service.streamlit_service.name
-  role     = "roles/run.invoker"
-  member   = "allUsers"
-}
-
-# 5. FIXED: Restored your exact Google-Managed AI Platform Service Agent identifier string
+# 4. CRITICAL IAM: Grant Vertex AI User permissions to your Agent Service Account
 resource "google_project_iam_member" "vertex_access" {
   project = "agentic-ai-502518"
   role    = "roles/aiplatform.user"
