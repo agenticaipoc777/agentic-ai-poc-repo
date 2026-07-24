@@ -1,7 +1,9 @@
-# 1. READ the existing Artifact Registry repository (Prevents 409 Duplicate Errors in CI/CD)
-data "google_artifact_registry_repository" "app_repo" {
+# 1. MAINTAIN the existing Artifact Registry repository layout
+resource "google_artifact_registry_repository" "app_repo" {
   location      = "europe-west1"
   repository_id = "streamlit-apps"
+  format        = "DOCKER"
+  description   = "Docker repository for Streamlit frontend apps"
 }
 
 # 2. AUTOMATIC IMPORT: Adopts the existing Cloud Run service safely into CI/CD pipeline state
@@ -18,7 +20,7 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
 
   template {
     containers {
-      image = "europe-west1-docker.pkg.dev/agentic-ai-502518/${data.google_artifact_registry_repository.app_repo.repository_id}/streamlit-frontend:latest"
+      image = "europe-west1-docker.pkg.dev/agentic-ai-502518/${google_artifact_registry_repository.app_repo.repository_id}/streamlit-frontend:latest"
 
       ports {
         container_port = 8080 # Matches your Dockerfile configuration
@@ -38,7 +40,16 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   }
 }
 
-# 4. CRITICAL IAM: Grant Vertex AI User permissions to your Agent Service Account
+# 4. PUBLIC ACCESS: Keep your frontend live and accessible to users over the web
+resource "google_cloud_run_v2_service_iam_member" "public_access" {
+  project  = "agentic-ai-502518"
+  location = "europe-west1"
+  name     = google_cloud_run_v2_service.streamlit_service.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+# 5. CRITICAL IAM: Grant Vertex AI User permissions to your Agent Service Account
 resource "google_project_iam_member" "vertex_access" {
   project = "agentic-ai-502518"
   role    = "roles/aiplatform.user"
