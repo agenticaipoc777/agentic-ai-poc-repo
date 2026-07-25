@@ -14,7 +14,7 @@ resource "google_service_account_iam_member" "deployer_impersonation" {
   member             = "user:lakshmikanth.avh1b@gmail.com"
 }
 
-# 3. CLOUD RUN SERVICE: Builds a clean instance running strictly under adk-agent-runner
+# 3. CLOUD RUN SERVICE: Builds a clean instance running strictly under adk-agent-runner prog
 resource "google_cloud_run_v2_service" "streamlit_service" {
   project    = "agentic-ai-502518"
   name       = "bq-analytics-frontend"
