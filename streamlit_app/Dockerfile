@@ -17,4 +17,6 @@ COPY . /app
 EXPOSE 8080
 
 # Clean, robust production execution entrypoint
-ENTRYPOINT ["streamlit", "run", "/app/app.py", "--server.port=8080", "--server.address=0.0.0.0", "--server.enableCORS=false", "--server.enableXsrfProtection=false", "--browser.gatherUsageStats=false"]
+ENTRYPOINT ["sh", "-c", "streamlit run /app/app.py --server.port=${PORT:-8080} --server.address=0.0.0.0 --browser.gatherUsageStats=false"]
+
+

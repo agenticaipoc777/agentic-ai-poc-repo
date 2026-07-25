@@ -1,6 +1,7 @@
 # Local backend state artifacts
 .terraform/
 *.tfstate
+*.tfstate.*
 *.tfstate.backup
 .terraform.lock.hcl
 
