@@ -86,9 +86,14 @@ jobs:
         
         echo "===================================================="
         echo "🚀 STREAMLIT APP IS LIVE AT THE URL BELOW:"
-        echo "http://$EXTERNAL_IP"
+        echo "streamlit-agenticai: http://$EXTERNAL_IP"
         echo "===================================================="
         
         # Output this directly to the GitHub Step Summary page for easy clicking
         echo "### 🚀 Streamlit App Deployment Complete!" >> $GITHUB_STEP_SUMMARY
-        echo "[Click Here to Open Your Live App](http://$EXTERNAL_IP)" >> $GITHUB_STEP_SUMMARY
+        echo "Click the clean text link below to access your live portal:" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # This masks the raw IP address behind the custom text label "streamlit-agenticai"
+        echo "[streamlit-agenticai](http://$EXTERNAL_IP)" >> $GITHUB_STEP_SUMMARY
+
