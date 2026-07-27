@@ -1,0 +1,63 @@
+name: Automated GKE Deployment Pipeline
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'streamlit_app/**'
+      - '.github/workflows/gke-deploy.yml'
+
+jobs:
+  deploy-to-gke:
+    name: Build, Containerize & Deploy to Kubernetes
+    runs-on: ubuntu-latest
+
+    # Crucial security scope for safe cloud authentication tokens
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+    # 1. Pull down the repository files to the runner instance
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
+
+    # 2. Log in securely to Google Cloud platform services
+    - name: Authenticate with Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    # 3. Initialize the Google Cloud SDK toolset
+    - name: Configure Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    # 4. Bind Docker authorization to your Europe West Artifact Registry
+    - name: Configure Docker Authentication
+      run: |
+        gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+
+    # 5. Build, tag, and upload your Streamlit app to the Artifact Registry
+    - name: Build and Push Docker Container
+      run: |
+        docker build -t europe-west1-docker.pkg.dev/agentic-ai-502518/streamlit-apps/streamlit-frontend:${{ github.sha }} -t europe-west1-docker.pkg.dev/agentic-ai-502518/streamlit-apps/streamlit-frontend:latest ./streamlit_app
+        docker push europe-west1-docker.pkg.dev/agentic-ai-502518/streamlit-apps/streamlit-frontend:${{ github.sha }}
+        docker push europe-west1-docker.pkg.dev/agentic-ai-502518/streamlit-apps/streamlit-frontend:latest
+
+    # 6. Establish connection credentials for your active GKE Autopilot cluster
+    - name: Connect to GKE Cluster
+      uses: google-github-actions/get-gke-credentials@v2
+      with:
+        cluster_name: adk-analytics-gke-cluster
+        location: europe-west1
+        project_id: agentic-ai-502518
+
+    # 7. Substitute the commit SHA into your manifest and apply it to Kubernetes
+    - name: Deploy Manifests to Kubernetes
+      run: |
+        # Inject the unique build tag into the deployment.yaml manifest dynamically
+        sed -i 's|streamlit-frontend:latest|streamlit-frontend:${{ github.sha }}|g' ./streamlit_app/deployment.yaml
+        
+        # Apply the structured services configuration to GKE
+        kubectl apply -f ./streamlit_app/deployment.yaml
