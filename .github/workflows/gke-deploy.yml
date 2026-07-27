@@ -52,6 +52,15 @@ jobs:
         cluster_name: adk-analytics-gke-cluster
         location: europe-west1
         project_id: agentic-ai-502518
+  
+    # Grants your exact service account identity workload permissions inside GKE
+    - name: Authorize GKE Workload Identity Binding
+      run: |
+        gcloud iam service-accounts add-iam-policy-binding adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com \
+          --role="roles/iam.workloadIdentityUser" \
+          --member="serviceAccount:agentic-ai-502518.svc.id.goog[default/streamlit-service-account]" \
+          --project=agentic-ai-502518 --quiet
+
 
     # 7. Substitute the commit SHA into your manifest and apply it to Kubernetes
     - name: Deploy Manifests to Kubernetes
