@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: streamlit-service-account
+  namespace: default
+  annotations:
+    # Binds the Kubernetes container to your authenticated GCP permissions
+    iam.gke.io/gcp-service-account: "adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bq-analytics-frontend
+  namespace: default
+spec:
+  replicas: 2 # Launches two instances to protect against downtime
+  selector:
+    matchLabels:
+      app: streamlit-app
+  template:
+    metadata:
+      labels:
+        app: streamlit-app
+    spec:
+      serviceAccountName: streamlit-service-account
+      containers:
+      - name: streamlit-container
+        image: "europe-west1-docker.pkg.dev/agentic-ai-502518/streamlit-apps/streamlit-frontend:latest"
+        ports:
+        - containerPort: 8080
+        resources:
+          limits:
+            cpu: "1"
+            memory: "2Gi"
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: streamlit-public-service
+  namespace: default
+spec:
+  type: LoadBalancer # Spins up a public external cloud IP routing edge
+  selector:
+    app: streamlit-app
+  ports:
+    - protocol: TCP
+      port: 80       # Direct internet requests over standard web port 80
+      targetPort: 8080 # Forwards traffic straight to your Streamlit engine
