@@ -29,6 +29,7 @@ resource "google_project_service" "services" {
 
     # --- 🔍 APPROVED AGENT PLATFORM APIS ---
     "apphub.googleapis.com",          # App Topology / App Hub Mapping
+    "container.googleapis.com",       # Google Kubernetes Engine (GKE) Engine Core API
     "apikeys.googleapis.com",         # Cloud API Registry / API Credentials Management
     "iamcredentials.googleapis.com",  # IAM Connectors / Secure Runtime Token Exchanges
     "iap.googleapis.com",             # Identity-Aware Proxy (IAP) Core Framework
