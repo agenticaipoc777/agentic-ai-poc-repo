@@ -16,10 +16,10 @@ resource "google_service_account_iam_member" "deployer_impersonation" {
 
 # 3. CLOUD RUN SERVICE: Builds a clean instance running strictly under adk-agent-runner prog
 resource "google_cloud_run_v2_service" "streamlit_service" {
-  project    = "agentic-ai-502518"
-  name       = "bq-analytics-frontend"
-  location   = "europe-west1"
-  ingress    = "INGRESS_TRAFFIC_ALL"
+  project  = "agentic-ai-502518"
+  name     = "bq-analytics-frontend"
+  location = "europe-west1"
+  ingress  = "INGRESS_TRAFFIC_ALL"
 
   template {
     # Assigning runtime identity to the service account
@@ -29,7 +29,7 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
       image = "europe-west1-docker.pkg.dev/agentic-ai-502518/${google_artifact_registry_repository.app_repo.repository_id}/streamlit-frontend:latest"
 
       ports {
-        container_port = 8080 
+        container_port = 8080
       }
 
       resources {
