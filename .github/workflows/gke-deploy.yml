@@ -61,3 +61,25 @@ jobs:
         
         # Apply the structured services configuration to GKE
         kubectl apply -f ./streamlit_app/deployment.yaml
+
+    # 8. Fetch the public IP and display the live Streamlit URL in the GitHub Actions Log
+    - name: Fetch Public Streamlit URL
+      run: |
+        printenv
+        echo "⏳ Waiting for Google Cloud to provision your public LoadBalancer IP..."
+        
+        # Loop until the External IP is fully active and assigned by GCP
+        EXTERNAL_IP=""
+        while [ -z "$EXTERNAL_IP" ]; do
+          sleep 10
+          EXTERNAL_IP=$(kubectl get svc streamlit-public-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+        done
+        
+        echo "===================================================="
+        echo "🚀 STREAMLIT APP IS LIVE AT THE URL BELOW:"
+        echo "http://$EXTERNAL_IP"
+        echo "===================================================="
+        
+        # Output this directly to the GitHub Step Summary page for easy clicking
+        echo "### 🚀 Streamlit App Deployment Complete!" >> $GITHUB_STEP_SUMMARY
+        echo "[Click Here to Open Your Live App](http://$EXTERNAL_IP)" >> $GITHUB_STEP_SUMMARY
