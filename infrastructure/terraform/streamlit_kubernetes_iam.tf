@@ -74,8 +74,7 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   ingress  = "INGRESS_TRAFFIC_ALL"
 
   template {
-    # FIXED: Hardcoded your exact service account email address directly
-    service_account = "adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
+    service_account = "adk-agent-runner@://gserviceaccount.com"
 
     containers {
       image = "europe-west1-docker.pkg.dev/agentic-ai-502518/streamlit-apps/streamlit-frontend:latest"
@@ -119,26 +118,14 @@ resource "google_cloud_run_v2_service_iam_member" "public_access" {
 
 # Workload Identity: Links your GKE deployment pods to your exact runner account
 resource "google_service_account_iam_member" "gke_workload_identity" {
-  # FIXED: Pointed to the exact service account identifier string
-  service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
+  service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@://gserviceaccount.com"
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:agentic-ai-502518.svc.id.goog[default/streamlit-service-account]"
 }
 
 # Deployer Impersonation: Grants manual invocation privileges over your exact runner account
 resource "google_service_account_iam_member" "deployer_impersonation" {
-  # FIXED: Pointed to the exact service account identifier string
-  service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
+  service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@://gserviceaccount.com"
   role               = "roles/iam.serviceAccountUser"
   member             = "user:lakshmikanth.avh1b@gmail.com"
-}
-
-# Artifact Registry Reader: Authorizes your exact runner account to pull container assets
-resource "google_artifact_registry_repository_iam_member" "runner_registry_reader" {
-  project    = "agentic-ai-502518"
-  location   = "europe-west1"
-  repository = "streamlit-apps"
-  role       = "roles/artifactregistry.reader"
-  # FIXED: Explicitly sets your target runner service account email string
-  member     = "serviceAccount:adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
 }
