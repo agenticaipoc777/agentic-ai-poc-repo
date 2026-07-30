@@ -146,3 +146,36 @@ resource "google_project_iam_member" "tf_deployer_roles" {
   role    = each.value
   member  = "serviceAccount:tf-deployer@${var.project_id}.iam.gserviceaccount.com"
 }
+
+
+# =======================================================================================================================================================
+# 8. DYNAMICALLY FETCH ACTIVE GCP PROJECT METADATA, grantinf acess to SA serviceAccount:service-661224241135@gcp-sa-aiplatform-re.iam.gserviceaccount.com
+# ========================================================================================================================================
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
+# ====================================================================
+# 9. DEFINE THE GOOGLE-MANAGED VERTEX REASONING ENGINE SERVICE AGENT
+# ====================================================================
+locals {
+  vertex_sa_member = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+# ====================================================================
+# 10. AUTOMATE BIGQUERY IAM ROLE BINDINGS
+# ====================================================================
+
+# Grant dataset discovery and table viewing access
+resource "google_project_iam_member" "vertex_bq_viewer" {
+  project = var.project_id
+  role    = "roles/bigquery.dataViewer"
+  member  = local.vertex_sa_member
+}
+
+# Grant query job execution access
+resource "google_project_iam_member" "vertex_bq_job_user" {
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = local.vertex_sa_member
+}
