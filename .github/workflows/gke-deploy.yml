@@ -36,7 +36,6 @@ jobs:
         
         echo "Found variable tracking manifest at: $VAR_FILE_PATH"
         
-        # Robust parsing targeting exact variable blocks using fallback field processing
         PROJECT_ID=$(awk '/variable "project_id"/ {flag=1; next} /}/ {flag=0} flag && /default/ {print $3}' "$VAR_FILE_PATH" | tr -d '"')
         COMPUTE_REGION=$(awk '/variable "vertex_compute_region"/ {flag=1; next} /}/ {flag=0} flag && /default/ {print $3}' "$VAR_FILE_PATH" | tr -d '"')
         
@@ -48,7 +47,6 @@ jobs:
           exit 1
         fi
         
-        # Save variables to GITHUB_ENV for the remaining steps to access
         echo "PROJECT_ID=$PROJECT_ID" >> $GITHUB_ENV
         echo "COMPUTE_REGION=$COMPUTE_REGION" >> $GITHUB_ENV
 
@@ -85,23 +83,30 @@ jobs:
     # 8. Substitute the commit SHA into your manifest and apply it to Kubernetes
     - name: Deploy Manifests to Kubernetes
       run: |
-        # Inject the unique build tag into the deployment.yaml manifest dynamically
         sed -i "s|streamlit-frontend:latest|streamlit-frontend:${{ github.sha }}|g" ./streamlit_app/deployment.yaml
-        
-        # Apply the structured services configuration to GKE
         kubectl apply -f ./streamlit_app/deployment.yaml
 
-    # 9. Fetch the public IP and display the live Streamlit URL in the GitHub Actions Log
+    # 9. Fetch IP using the indexed array structure required for GKE 1.35+
     - name: Fetch Public Streamlit URL
+      timeout-minutes: 5
       run: |
         printenv
         echo "⏳ Waiting for Google Cloud to provision your public LoadBalancer IP..."
         
-        # FIXED: Removed the precise matrix array index constraints from JSONPath extraction
+        COUNTER=0
         EXTERNAL_IP=""
+        
         while [ -z "$EXTERNAL_IP" ]; do
+          if [ $COUNTER -gt 6 ]; then
+            echo "⚠️ Provisioning is running. Printing current manifest state events:"
+            kubectl describe service streamlit-public-service || true
+            COUNTER=0
+          fi
+          
           sleep 10
-          EXTERNAL_IP=$(kubectl get svc streamlit-public-service -o jsonpath='{.status.loadBalancer.ingress.ip}' 2>/dev/null || echo "")
+          # FIXED: Using explicit [0] index element query format for GKE JSONPath schema matching
+          EXTERNAL_IP=$(kubectl get svc streamlit-public-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          COUNTER=$((COUNTER+1))
         done
         
         echo "===================================================="
@@ -109,10 +114,7 @@ jobs:
         echo "streamlit-agenticai: http://$EXTERNAL_IP"
         echo "===================================================="
         
-        # Output this directly to the GitHub Step Summary page for easy clicking
         echo "### 🚀 Streamlit App Deployment Complete!" >> $GITHUB_STEP_SUMMARY
         echo "Click the clean text link below to access your live portal:" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        
-        # This masks the raw IP address behind the custom text label "streamlit-agenticai"
         echo "[streamlit-agenticai](http://$EXTERNAL_IP)" >> $GITHUB_STEP_SUMMARY
