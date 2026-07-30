@@ -27,14 +27,20 @@ jobs:
     - name: Parse Terraform Variables
       id: tf_vars
       run: |
-        # Parse default values out of variables.tf to avoid dual-maintenance
-        PROJECT_ID=$(grep -A 2 "variable \"project_id\"" variables.tf | grep "default" | cut -d'"' -f2)
-        COMPUTE_REGION=$(grep -A 2 "variable \"vertex_compute_region\"" variables.tf | grep "default" | cut -d'"' -f2)
+        # Robust parsing pattern targeting exact variable blocks and clean strings
+        PROJECT_ID=$(awk '/variable "project_id"/ {flag=1; next} /}/ {flag=0} flag && /default/ {print $3}' variables.tf | tr -d '"')
+        COMPUTE_REGION=$(awk '/variable "vertex_compute_region"/ {flag=1; next} /}/ {flag=0} flag && /default/ {print $3}' variables.tf | tr -d '"')
         
         echo "Extracted Project ID: $PROJECT_ID"
         echo "Extracted Compute Region: $COMPUTE_REGION"
         
-        # Save variables to GITHUB_ENV for subsequent steps to access
+        # Verify extraction succeeded before moving forward
+        if [ -z "$PROJECT_ID" ] || [ -z "$COMPUTE_REGION" ]; then
+          echo "❌ ERROR: Failed to extract values from variables.tf. Check naming structure."
+          exit 1
+        fi
+        
+        # Save variables to GITHUB_ENV for the remaining steps to access
         echo "PROJECT_ID=$PROJECT_ID" >> $GITHUB_ENV
         echo "COMPUTE_REGION=$COMPUTE_REGION" >> $GITHUB_ENV
 
@@ -48,12 +54,12 @@ jobs:
     - name: Configure Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
 
-    # 5. Bind Docker authorization to your dynamic Variable Compute Region
+    # 5. Bind Docker authorization to your dynamic Compute Region from variables.tf
     - name: Configure Docker Authentication
       run: |
         gcloud auth configure-docker ${{ env.COMPUTE_REGION }}-docker.pkg.dev --quiet
 
-    # 6. Build, tag, and upload your Streamlit app utilizing parsed environment properties
+    # 6. Build, tag, and upload your Streamlit app utilizing variables.tf details
     - name: Build and Push Docker Container
       run: |
         docker build -t ${{ env.COMPUTE_REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/streamlit-apps/streamlit-frontend:${{ github.sha }} -t ${{ env.COMPUTE_REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/streamlit-apps/streamlit-frontend:latest ./streamlit_app
@@ -80,14 +86,13 @@ jobs:
     # 9. Fetch the public IP and display the live Streamlit URL in the GitHub Actions Log
     - name: Fetch Public Streamlit URL
       run: |
-        printenv
         echo "⏳ Waiting for Google Cloud to provision your public LoadBalancer IP..."
         
         # Loop until the External IP is fully active and assigned by GCP
         EXTERNAL_IP=""
         while [ -z "$EXTERNAL_IP" ]; do
           sleep 10
-          EXTERNAL_IP=$(kubectl get svc streamlit-public-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          EXTERNAL_IP=$(kubectl get svc streamlit-public-service -o jsonpath='{.status.loadBalancer.ingress.ip}' 2>/dev/null || echo "")
         done
         
         echo "===================================================="
