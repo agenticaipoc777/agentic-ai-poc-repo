@@ -74,7 +74,7 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   ingress  = "INGRESS_TRAFFIC_ALL"
 
   template {
-    # Exact requested service account email address used explicitly
+    # VERIFIED: Using your exact service account email address explicitly
     service_account = "adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
 
     containers {
@@ -102,24 +102,12 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
 
 
 # ====================================================================
-# 5. PUBLIC ROUTING: Allows anonymous web entry to Cloud Run
-# ====================================================================
-resource "google_cloud_run_v2_service_iam_member" "public_access" {
-  project  = "agentic-ai-502518"
-  location = "europe-west1"
-  name     = google_cloud_run_v2_service.streamlit_service.name
-  role     = "roles/run.invoker"
-  member   = "allUsers"
-}
-
-
-# ====================================================================
-# 6. IDENTITY BINDINGS WITH FULL CORRECT RECOGNIZED PATH STRINGS
+# 5. IDENTITY BINDINGS USING STATIC SERVICE ACCOUNT VALUES
 # ====================================================================
 
 # Workload Identity: Links your GKE deployment pods to your exact runner account
 resource "google_service_account_iam_member" "gke_workload_identity" {
-  # FIXED: Complete valid string format with exact email matching the GCP expression syntax
+  # VERIFIED: Using your exact service account identifier path
   service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:agentic-ai-502518.svc.id.goog[default/streamlit-service-account]"
@@ -127,7 +115,7 @@ resource "google_service_account_iam_member" "gke_workload_identity" {
 
 # Deployer Impersonation: Grants manual invocation privileges over your exact runner account
 resource "google_service_account_iam_member" "deployer_impersonation" {
-  # FIXED: Complete valid string format with exact email matching the GCP expression syntax
+  # VERIFIED: Using your exact service account identifier path
   service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
   role               = "roles/iam.serviceAccountUser"
   member             = "user:lakshmikanth.avh1b@gmail.com"
