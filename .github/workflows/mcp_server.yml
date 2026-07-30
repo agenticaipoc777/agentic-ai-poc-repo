@@ -1,0 +1,64 @@
+name: "Deploy BQ Knowledge Engine MCP Server"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'mcp_server/**' # Trigger pipeline only when code inside the server directory changes
+
+jobs:
+  deploy_mcp_infrastructure:
+    name: "Build Image and Deploy Cloud Run"
+    runs-on: ubuntu-latest
+
+    env:
+      GCP_PROJECT: "agentic-ai-502518"
+      GCP_COMPUTE_REGION: "europe-west1"
+
+    defaults:
+      run:
+        working-directory: ./infrastructure/terraform
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform Binary
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.0
+
+      - name: Authenticate against Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Cloud CLI Credentials
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Initialize Workspace Environment
+        run: terraform init
+
+      - name: Validate Logic Consistency
+        run: terraform validate
+
+      # Phase A: Provision Artifact Registry container storage repository first
+      - name: Target Registry Creation
+        run: terraform apply -target=google_artifact_registry_repository.mcp_repo -auto-approve
+
+      # Phase B: Authenticate local Docker daemon against Artifact Registry
+      - name: Authorize Docker Engine
+        run: |
+          gcloud auth configure-docker ${{ env.GCP_COMPUTE_REGION }}-docker.pkg.dev --quiet
+
+      # Phase C: Build, Tag, and Push your Python application container
+      - name: Compile and Push MCP Image
+        run: |
+          docker build -t ${{ env.GCP_COMPUTE_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/mcp-server-repo/mcp-app:${{ github.sha }} -t ${{ env.GCP_COMPUTE_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/mcp-server-repo/mcp-app:latest ../../mcp_server
+          docker push ${{ env.GCP_COMPUTE_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/mcp-server-repo/mcp-app:${{ github.sha }}
+          docker push ${{ env.GCP_COMPUTE_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/mcp-server-repo/mcp-app:latest
+
+      # Phase D: Execute full Terraform plan to link the new service account and run the container
+      - name: Execute Live Infrastructure Rollout
+        run: terraform apply -auto-approve

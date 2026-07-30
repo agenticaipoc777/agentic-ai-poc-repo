@@ -110,12 +110,12 @@ resource "google_project_iam_member" "user_console_roles" {
     "roles/artifactregistry.writer",
     "roles/bigquery.dataOwner",
     "roles/bigquery.jobUser",
-    "roles/notebooks.admin",        # Maps to Notebooks Admin / Cloud NotebookLM Owner scope
+    "roles/notebooks.admin", # Maps to Notebooks Admin / Cloud NotebookLM Owner scope
     "roles/dialogflow.admin",
     "roles/discoveryengine.admin",
     "roles/cloudaicompanion.admin", # Gemini for Google Cloud Admin
     "roles/owner",
-    "roles/billing.projectManager", # Project Billing Manager
+    "roles/billing.projectManager",          # Project Billing Manager
     "roles/resourcemanager.projectIamAdmin", # Project IAM Admin
     "roles/iam.serviceAccountAdmin",
     "roles/iam.serviceAccountTokenCreator",
