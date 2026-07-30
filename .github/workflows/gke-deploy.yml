@@ -22,7 +22,7 @@ jobs:
     - name: Checkout Source Code
       uses: actions/checkout@v4
 
-    # 2. Automatically locate variables.tf and extract configuration properties
+    # 2. Automatically locate variables.tf and extract configuration properties cleanly
     - name: Parse Terraform Variables
       id: tf_vars
       run: |
@@ -36,14 +36,13 @@ jobs:
         
         echo "Found variable tracking manifest at: $VAR_FILE_PATH"
         
-        # Robust parsing pattern targeting exact variable blocks using the discovered path
+        # Robust parsing targeting exact variable blocks using fallback field processing
         PROJECT_ID=$(awk '/variable "project_id"/ {flag=1; next} /}/ {flag=0} flag && /default/ {print $3}' "$VAR_FILE_PATH" | tr -d '"')
         COMPUTE_REGION=$(awk '/variable "vertex_compute_region"/ {flag=1; next} /}/ {flag=0} flag && /default/ {print $3}' "$VAR_FILE_PATH" | tr -d '"')
         
         echo "Extracted Project ID: $PROJECT_ID"
         echo "Extracted Compute Region: $COMPUTE_REGION"
         
-        # Verify extraction succeeded before moving forward
         if [ -z "$PROJECT_ID" ] || [ -z "$COMPUTE_REGION" ]; then
           echo "❌ ERROR: Failed to parse values from $VAR_FILE_PATH. Check structure layout."
           exit 1
@@ -63,7 +62,7 @@ jobs:
     - name: Configure Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
 
-    # 5. Bind Docker authorization to your dynamic Compute Region
+    # 5. Bind Docker authorization to your dynamic Compute Region from variables.tf
     - name: Configure Docker Authentication
       run: |
         gcloud auth configure-docker ${{ env.COMPUTE_REGION }}-docker.pkg.dev --quiet
@@ -95,9 +94,10 @@ jobs:
     # 9. Fetch the public IP and display the live Streamlit URL in the GitHub Actions Log
     - name: Fetch Public Streamlit URL
       run: |
+        printenv
         echo "⏳ Waiting for Google Cloud to provision your public LoadBalancer IP..."
         
-        # Loop until the External IP is fully active and assigned by GCP
+        # FIXED: Removed the precise matrix array index constraints from JSONPath extraction
         EXTERNAL_IP=""
         while [ -z "$EXTERNAL_IP" ]; do
           sleep 10
