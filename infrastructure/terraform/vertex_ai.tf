@@ -39,35 +39,9 @@ resource "google_service_account" "adk_agent_runner" {
 }
 
 # ====================================================================
-# 3. SECURITY ROLES ATTACHMENT FOR THE ADK AGENT IDENTITY
+# 3. STORAGE ACCESS (SPECIFIC BUCKET-LEVEL BINDING)
 # ====================================================================
 
-# Role 1: Vertex AI computing user privileges to invoke Gemini models
-resource "google_project_iam_member" "agent_vertex_user" {
-  project = var.project_id
-  role    = "roles/aiplatform.user"
-  member  = "serviceAccount:${google_service_account.adk_agent_runner.email}"
-}
-
-# Role 2: Grants read rights to query your analytics_v3 dataset target
-resource "google_project_iam_member" "agent_bq_viewer" {
-  project = var.project_id
-  role    = "roles/bigquery.dataViewer"
-  member  = "serviceAccount:${google_service_account.adk_agent_runner.email}"
-}
-
-# Role 3: Metadata retrieval layer for structural project inspections
-resource "google_project_iam_member" "agent_metadata_viewer" {
-  project = var.project_id
-  role    = "roles/viewer"
-  member  = "serviceAccount:${google_service_account.adk_agent_runner.email}"
-}
-
-# ====================================================================
-# 4. CRITICAL MISSING RUNTIME ROLES FOR AGENT ENGINE EXECUTION
-# ====================================================================
-
-# Role 4: Storage Object Viewer
 # Allows the Agent Engine runtime to download and extract your staged 
 # python zipped agent bundles and requirements.txt from the staging bucket.
 resource "google_storage_bucket_iam_member" "agent_storage_reader" {
@@ -76,11 +50,54 @@ resource "google_storage_bucket_iam_member" "agent_storage_reader" {
   member = "serviceAccount:${google_service_account.adk_agent_runner.email}"
 }
 
-# Role 5: BigQuery Job User
-# Required alongside 'dataViewer'. It gives the agent permission to 
-# run query jobs, sort data, and execute SQL statements against analytics_v3.
-resource "google_project_iam_member" "agent_bq_job_user" {
+# ====================================================================
+# 4. DYNAMIC IAM BINDINGS FOR THE SERVICE ACCOUNT
+# ====================================================================
+
+# Loop managing all 23 target project-level permissions shown in your image
+resource "google_project_iam_member" "runner_project_roles" {
+  for_each = toset([
+    "roles/agentplatform.admin",
+    "roles/agentplatform.user",
+    "roles/aiplatform.admin",
+    "roles/aiplatform.viewer",
+    "roles/aiplatform.editor",
+    "roles/bigquery.dataViewer",
+    "roles/bigquery.jobUser",
+    "roles/cloudtrace.agent",
+    "roles/dialogflow.admin",
+    "roles/discoveryengine.admin",
+    "roles/discoveryengine.editor",
+    "roles/discoveryengine.serviceAgent",
+    "roles/editor",
+    "roles/cloudaicompanion.admin", # Gemini for Google Cloud Admin
+    "roles/logging.logWriter",
+    "roles/resourcemanager.projectIamAdmin",
+    "roles/iam.serviceAccountAdmin",
+    "roles/iam.serviceAccountTokenCreator",
+    "roles/serviceusage.serviceUsageAdmin",
+    "roles/storage.admin",
+    "roles/aiplatform.provisionedThroughputAdmin",
+    "roles/aiplatform.serviceAgent",
+    "roles/viewer"
+  ])
+
   project = var.project_id
-  role    = "roles/bigquery.jobUser"
+  role    = each.value
   member  = "serviceAccount:${google_service_account.adk_agent_runner.email}"
+}
+
+# Workload Identity Link: Connects GKE application pods to the service account
+resource "google_service_account_iam_member" "gke_workload_identity" {
+  # FIXED: Removed the accidental duplicate 'var.var.' syntax
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${google_service_account.adk_agent_runner.email}"
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[default/streamlit-service-account]"
+}
+
+# Local Impersonation Link: Allows manual execution using this identity
+resource "google_service_account_iam_member" "deployer_impersonation" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${google_service_account.adk_agent_runner.email}"
+  role               = "roles/iam.serviceAccountUser"
+  member             = "user:lakshmikanth.avh1b@gmail.com"
 }

@@ -99,22 +99,3 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
 
   depends_on = [google_service_account_iam_member.deployer_impersonation]
 }
-
-
-# ====================================================================
-# 5. IDENTITY BINDINGS USING VARIABLE-DRIVEN SERVICE ACCOUNT VALUES
-# ====================================================================
-
-# Workload Identity: Links your GKE deployment pods to your exact runner account
-resource "google_service_account_iam_member" "gke_workload_identity" {
-  service_account_id = "projects/${var.project_id}/serviceAccounts/adk-agent-runner@${var.project_id}.iam.gserviceaccount.com"
-  role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:${var.project_id}.svc.id.goog[default/streamlit-service-account]"
-}
-
-# Deployer Impersonation: Grants manual invocation privileges over your exact runner account
-resource "google_service_account_iam_member" "deployer_impersonation" {
-  service_account_id = "projects/${var.project_id}/serviceAccounts/adk-agent-runner@${var.project_id}.iam.gserviceaccount.com"
-  role               = "roles/iam.serviceAccountUser"
-  member             = "user:lakshmikanth.avh1b@gmail.com"
-}
