@@ -8,10 +8,10 @@ import {
   id = "projects/agentic-ai-502518/locations/europe-west1/repositories/mcp-server-repo"
 }
 
-# FIXED: Reconstructed with your complete project namespace domain to eliminate regex loop failures
+# FULLY FIXED: Eliminated the broken text formatting string completely
 import {
   to = google_service_account.mcp_runner
-  id = "projects/agentic-ai-502518/serviceAccounts/mcp-server-runner@://gserviceaccount.com"
+  id = "projects/agentic-ai-502518/serviceAccounts/mcp-server-runner@agentic-ai-502518.iam.gserviceaccount.com"
 }
 
 
@@ -64,10 +64,10 @@ resource "google_cloud_run_v2_service" "mcp_server" {
 
   template {
     service_account = "mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
-    
+
     containers {
       image = "us-docker.pkg.dev/cloudrun/container/hello:latest"
-      
+
       ports {
         container_port = 8080
       }
@@ -76,14 +76,14 @@ resource "google_cloud_run_v2_service" "mcp_server" {
 
   lifecycle {
     ignore_changes = [
-      template.containers
+      template[0].containers
     ]
   }
 }
 
 
 # ====================================================================
-# 5. ZERO-TRUST ACCESS CONTROLS (BLOCK ANONYMOUS INBOUND ENTRANCES)
+# 5. ACCESS CONTROLS (SECURE INBOUND ENTRANCES)
 # ====================================================================
 resource "google_cloud_run_v2_service_iam_binding" "mcp_no_auth" {
   project  = var.project_id
@@ -91,6 +91,7 @@ resource "google_cloud_run_v2_service_iam_binding" "mcp_no_auth" {
   name     = google_cloud_run_v2_service.mcp_server.name
   role     = "roles/run.invoker"
   members = [
-    "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
+    "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com",
+    "user:lakshmikanth.avh1b@gmail.com" # FIXED: Added your user account so you bypass the 403 error page
   ]
 }
