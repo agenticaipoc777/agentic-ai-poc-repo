@@ -24,7 +24,6 @@ resource "google_storage_bucket" "adk_staging" {
   force_destroy = true
 
   uniform_bucket_level_access = true
-  depends_on                  = [google_project_service.services]
 }
 
 # ====================================================================
@@ -34,8 +33,6 @@ resource "google_service_account" "adk_agent_runner" {
   project      = var.project_id
   account_id   = "adk-agent-runner"
   display_name = "ADK Agent Engine Execution Identity"
-
-  depends_on = [google_project_service.services]
 }
 
 # ====================================================================
@@ -47,18 +44,16 @@ resource "google_service_account" "adk_agent_runner" {
 resource "google_storage_bucket_iam_member" "agent_storage_reader" {
   bucket = google_storage_bucket.adk_staging.name
   role   = "roles/storage.objectViewer"
-  member = "serviceAccount:${google_service_account.adk_agent_runner.email}"
+  member = "serviceAccount:adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
 }
 
 # ====================================================================
 # 4. DYNAMIC IAM BINDINGS FOR THE SERVICE ACCOUNT
 # ====================================================================
 
-# Loop managing all 23 target project-level permissions shown in your image
+# Loop managing all supported project-level permissions shown in your image
 resource "google_project_iam_member" "runner_project_roles" {
   for_each = toset([
-    "roles/agentplatform.admin",
-    "roles/agentplatform.user",
     "roles/aiplatform.admin",
     "roles/aiplatform.viewer",
     "roles/aiplatform.editor",
@@ -84,20 +79,22 @@ resource "google_project_iam_member" "runner_project_roles" {
 
   project = var.project_id
   role    = each.value
-  member  = "serviceAccount:${google_service_account.adk_agent_runner.email}"
+  # FIXED: Explicitly maps permissions directly to your requested identity string
+  member  = "serviceAccount:adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
 }
 
 # Workload Identity Link: Connects GKE application pods to the service account
 resource "google_service_account_iam_member" "gke_workload_identity" {
-  # FIXED: Removed the accidental duplicate 'var.var.' syntax
-  service_account_id = "projects/${var.project_id}/serviceAccounts/${google_service_account.adk_agent_runner.email}"
+  # FIXED: Pointed directly to your explicit target project path identity 
+  service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[default/streamlit-service-account]"
 }
 
 # Local Impersonation Link: Allows manual execution using this identity
 resource "google_service_account_iam_member" "deployer_impersonation" {
-  service_account_id = "projects/${var.project_id}/serviceAccounts/${google_service_account.adk_agent_runner.email}"
+  # FIXED: Pointed directly to your explicit target project path identity
+  service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
   role               = "roles/iam.serviceAccountUser"
   member             = "user:lakshmikanth.avh1b@gmail.com"
 }
