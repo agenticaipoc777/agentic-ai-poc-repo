@@ -44,7 +44,8 @@ resource "google_service_account" "adk_agent_runner" {
 resource "google_storage_bucket_iam_member" "agent_storage_reader" {
   bucket = google_storage_bucket.adk_staging.name
   role   = "roles/storage.objectViewer"
-  member = "serviceAccount:adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
+  # FIXED: Service account email constructed dynamically using var.project_id
+  member = "serviceAccount:adk-agent-runner@${var.project_id}.iam.gserviceaccount.com"
 }
 
 # ====================================================================
@@ -79,22 +80,22 @@ resource "google_project_iam_member" "runner_project_roles" {
 
   project = var.project_id
   role    = each.value
-  # FIXED: Explicitly maps permissions directly to your requested identity string
-  member  = "serviceAccount:adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
+  # FIXED: Service account email constructed dynamically using var.project_id
+  member  = "serviceAccount:adk-agent-runner@${var.project_id}.iam.gserviceaccount.com"
 }
 
 # Workload Identity Link: Connects GKE application pods to the service account
 resource "google_service_account_iam_member" "gke_workload_identity" {
-  # FIXED: Pointed directly to your explicit target project path identity 
-  service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
+  # FIXED: Service account resource path constructed dynamically using var.project_id
+  service_account_id = "projects/${var.project_id}/serviceAccounts/adk-agent-runner@${var.project_id}.iam.gserviceaccount.com"
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[default/streamlit-service-account]"
 }
 
 # Local Impersonation Link: Allows manual execution using this identity
 resource "google_service_account_iam_member" "deployer_impersonation" {
-  # FIXED: Pointed directly to your explicit target project path identity
-  service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
+  # FIXED: Service account resource path constructed dynamically using var.project_id
+  service_account_id = "projects/${var.project_id}/serviceAccounts/adk-agent-runner@${var.project_id}.iam.gserviceaccount.com"
   role               = "roles/iam.serviceAccountUser"
   member             = "user:lakshmikanth.avh1b@gmail.com"
 }
