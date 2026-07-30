@@ -7,12 +7,8 @@ import {
 # ADOPT EXISTING SERVICE ACCOUNT
 import {
   to = google_service_account.mcp_runner
-  id = "projects/agentic-ai-502518/serviceAccounts/mcp-server-runner@agentic-ai-502518.iam.gserviceaccount.com"
+  id = "projects/agentic-ai-502518/serviceAccounts/mcp-server-runner@://gserviceaccount.com"
 }
-
-# ====================================================================
-# YOUR EXISTING INFRASTRUCTURE LOGIC CONTINUES BELOW UNCHANGED
-# ====================================================================
 
 # 1. Create a secure Docker repository inside Artifact Registry
 resource "google_artifact_registry_repository" "mcp_repo" {
@@ -59,9 +55,10 @@ resource "google_cloud_run_v2_service" "mcp_server" {
     }
   }
 
+  # FIXED: Explicitly indexed to follow Terraform's nested object rules
   lifecycle {
     ignore_changes = [
-      template.containers.image
+      template[0].containers[0].image
     ]
   }
 }
