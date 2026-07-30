@@ -5,7 +5,8 @@ on:
     branches:
       - main
     paths:
-      - 'mcp_server/**' # Trigger pipeline only when code inside the server directory changes
+      - 'mcp_server/**'
+      - 'infrastructure/terraform/mcp_server.tf' # Also trigger if infra file changes
 
 jobs:
   deploy_mcp_infrastructure:
@@ -32,7 +33,7 @@ jobs:
       - name: Authenticate against Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          credentials_json: ${{ secrets.GCP_SA_MCP_SERVER_KEY }}
 
       - name: Configure Cloud CLI Credentials
         uses: google-github-actions/setup-gcloud@v2
@@ -59,6 +60,13 @@ jobs:
           docker push ${{ env.GCP_COMPUTE_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/mcp-server-repo/mcp-app:${{ github.sha }}
           docker push ${{ env.GCP_COMPUTE_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/mcp-server-repo/mcp-app:latest
 
-      # Phase D: Execute full Terraform plan to link the new service account and run the container
+      # Phase D: Execute Terraform apply to spin up Cloud Run using the public fallback image
       - name: Execute Live Infrastructure Rollout
         run: terraform apply -auto-approve
+
+      # Phase E: Overwrite the placeholder with your actual compiled app code image smoothly
+      - name: Deploy Real Application Code to Cloud Run
+        run: |
+          gcloud run services update bq-mcp-analytics-engine \
+            --image=${{ env.GCP_COMPUTE_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/mcp-server-repo/mcp-app:${{ github.sha }} \
+            --region=${{ env.GCP_COMPUTE_REGION }}
