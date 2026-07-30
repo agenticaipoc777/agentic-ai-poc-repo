@@ -1,77 +1,71 @@
-name: "Deploy BQ Knowledge Engine MCP Server"
+name: Automated MCP Server Deployment Pipeline
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'mcp_server/**'
-      - 'infrastructure/terraform/mcp_server.tf'
-
-env:
-  # Prevents deprecation warnings from interrupting workflow execution steps
-  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true 
+      - 'mcp_server_app/**'
+      - '.github/workflows/mcp_server.yml' # FIXED: Matches your exact filename
 
 jobs:
-  deploy_mcp_infrastructure:
-    name: "Build Image and Deploy Cloud Run"
+  deploy-mcp:
+    name: Build, Containerize & Release MCP Server
     runs-on: ubuntu-latest
 
-    env:
-      GCP_PROJECT: "agentic-ai-502518"
-      GCP_COMPUTE_REGION: "europe-west1"
-
-    defaults:
-      run:
-        working-directory: ./infrastructure/terraform
+    permissions:
+      contents: 'read'
+      id-token: 'write'
 
     steps:
-      - name: Checkout Code Repository
-        uses: actions/checkout@v4
+    # 1. Pull down repository files
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
 
-      - name: Setup Terraform Binary
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.7.0
+    # 2. Automatically discover variables.tf and extract runtime profiles dynamically
+    - name: Parse Terraform Variables
+      id: tf_vars
+      run: |
+        echo "🔍 Discovering variable configuration manifest..."
+        VAR_FILE_PATH=$(find . -name "variables.tf" -print -quit)
+        
+        if [ -z "$VAR_FILE_PATH" ]; then
+          echo "❌ ERROR: variables.tf file not found!"
+          exit 1
+        fi
+        
+        PROJECT_ID=$(awk '/variable "project_id"/ {flag=1; next} /}/ {flag=0} flag && /default/ {print $3}' "$VAR_FILE_PATH" | tr -d '"')
+        COMPUTE_REGION=$(awk '/variable "vertex_compute_region"/ {flag=1; next} /}/ {flag=0} flag && /default/ {print $3}' "$VAR_FILE_PATH" | tr -d '"')
+        
+        echo "PROJECT_ID=$PROJECT_ID" >> $GITHUB_ENV
+        echo "COMPUTE_REGION=$COMPUTE_REGION" >> $GITHUB_ENV
 
-      - name: Authenticate against Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          # Uses your original verified working secret key to prevent empty token errors
-          credentials_json: ${{ secrets.GCP_SA_KEY }} 
+    # 3. Log in securely using pipeline encryption contexts
+    - name: Authenticate with Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Configure Cloud CLI Credentials
-        uses: google-github-actions/setup-gcloud@v2
+    # 4. Initialize Cloud SDK CLI tools
+    - name: Configure Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
 
-      - name: Initialize Workspace Environment
-        run: terraform init
+    # 5. Connect Docker to your variable-driven Artifact Registry endpoint
+    - name: Configure Docker Authentication
+      run: |
+        gcloud auth configure-docker ${{ env.COMPUTE_REGION }}-docker.pkg.dev --quiet
 
-      - name: Validate Logic Consistency
-        run: terraform validate
+    # 6. Containerize your code and upload assets securely to your mcp-server-repo registry
+    - name: Build and Push Docker Container
+      run: |
+        docker build -t ${{ env.COMPUTE_REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/mcp-server-repo/bq-mcp-analytics-engine:${{ github.sha }} -t ${{ env.COMPUTE_REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/mcp-server-repo/bq-mcp-analytics-engine:latest ./mcp_server_app
+        docker push ${{ env.COMPUTE_REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/mcp-server-repo/bq-mcp-analytics-engine:${{ github.sha }}
+        docker push ${{ env.COMPUTE_REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/mcp-server-repo/bq-mcp-analytics-engine:latest
 
-      # Phase A: Provision Artifact Registry container storage repository first
-      - name: Target Registry Creation
-        run: terraform apply -target=google_artifact_registry_repository.mcp_repo -auto-approve
-
-      # Phase B: Authenticate local Docker daemon against Artifact Registry
-      - name: Authorize Docker Engine
-        run: |
-          gcloud auth configure-docker ${{ env.GCP_COMPUTE_REGION }}-docker.pkg.dev --quiet
-
-      # Phase C: Build, Tag, and Push your Python application container
-      - name: Compile and Push MCP Image
-        run: |
-          docker build -t ${{ env.GCP_COMPUTE_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/mcp-server-repo/mcp-app:${{ github.sha }} -t ${{ env.GCP_COMPUTE_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/mcp-server-repo/mcp-app:latest ../../mcp_server
-          docker push ${{ env.GCP_COMPUTE_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/mcp-server-repo/mcp-app:${{ github.sha }}
-          docker push ${{ env.GCP_COMPUTE_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/mcp-server-repo/mcp-app:latest
-
-      # Phase D: Execute Terraform apply to spin up Cloud Run using the public fallback image
-      - name: Execute Live Infrastructure Rollout
-        run: terraform apply -auto-approve
-
-      # Phase E: Overwrite the placeholder with your actual compiled app code image smoothly
-      - name: Deploy Real Application Code to Cloud Run
-        run: |
-          gcloud run services update bq-mcp-analytics-engine \
-            --image=${{ env.GCP_COMPUTE_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/mcp-server-repo/mcp-app:${{ github.sha }} \
-            --region=${{ env.GCP_COMPUTE_REGION }}
+    # 7. Update the Cloud Run server instance image with zero structural downtime
+    - name: Deploy to Cloud Run
+      run: |
+        gcloud run services update bq-mcp-analytics-engine \
+          --image=${{ env.COMPUTE_REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/mcp-server-repo/bq-mcp-analytics-engine:${{ github.sha }} \
+          --region=${{ env.COMPUTE_REGION }} \
+          --project=${{ env.PROJECT_ID }}
