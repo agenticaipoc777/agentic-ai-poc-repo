@@ -1,3 +1,19 @@
+# ADOPT EXISTING ARTIFACT REGISTRY
+import {
+  to = google_artifact_registry_repository.mcp_repo
+  id = "projects/agentic-ai-502518/locations/europe-west1/repositories/mcp-server-repo"
+}
+
+# ADOPT EXISTING SERVICE ACCOUNT
+import {
+  to = google_service_account.mcp_runner
+  id = "projects/agentic-ai-502518/serviceAccounts/mcp-server-runner@agentic-ai-502518.iam.gserviceaccount.com"
+}
+
+# ====================================================================
+# YOUR EXISTING INFRASTRUCTURE LOGIC CONTINUES BELOW UNCHANGED
+# ====================================================================
+
 # 1. Create a secure Docker repository inside Artifact Registry
 resource "google_artifact_registry_repository" "mcp_repo" {
   location      = var.vertex_compute_region
@@ -35,7 +51,6 @@ resource "google_cloud_run_v2_service" "mcp_server" {
     service_account = google_service_account.mcp_runner.email
     
     containers {
-      # FIXED: Use a universally available public placeholder image for the initial deployment boost
       image = "us-docker.pkg.dev/cloudrun/container/hello:latest"
       
       ports {
@@ -46,7 +61,7 @@ resource "google_cloud_run_v2_service" "mcp_server" {
 
   lifecycle {
     ignore_changes = [
-      template[0].containers[0].image
+      template.containers.image
     ]
   }
 }
