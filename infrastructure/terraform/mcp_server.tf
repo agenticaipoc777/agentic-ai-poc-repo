@@ -83,15 +83,12 @@ resource "google_cloud_run_v2_service" "mcp_server" {
 
 
 # ====================================================================
-# 5. ACCESS CONTROLS (SECURE INBOUND ENTRANCES)
+# 5. ACCESS CONTROLS: FIXED FOR UNRESTRICTED PUBLIC ACCESS
 # ====================================================================
-resource "google_cloud_run_v2_service_iam_binding" "mcp_no_auth" {
+resource "google_cloud_run_v2_service_iam_member" "mcp_public_access" {
   project  = var.project_id
   location = google_cloud_run_v2_service.mcp_server.location
   name     = google_cloud_run_v2_service.mcp_server.name
   role     = "roles/run.invoker"
-  members = [
-    "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com",
-    "user:lakshmikanth.avh1b@gmail.com" # FIXED: Added your user account so you bypass the 403 error page
-  ]
+  member   = "allUsers" # FIXED: Allows unauthenticated internet traffic to access your MCP endpoints
 }
