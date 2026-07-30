@@ -34,7 +34,7 @@ resource "google_workbench_instance" "adk_predictive_workbench" {
 
 
 # ====================================================================
-# 2. ARTIFACT REGISTRY: Shared Docker repository for Streamlit images
+# 2. ARTIFACT REGISTRY: Shared Docker repository for Streamlit images for docker
 # ====================================================================
 resource "google_artifact_registry_repository" "app_repo" {
   project       = var.project_id
