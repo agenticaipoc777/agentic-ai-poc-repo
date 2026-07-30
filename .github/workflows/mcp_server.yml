@@ -5,8 +5,8 @@ on:
     branches:
       - main
     paths:
-      - 'mcp_server_app/**'
-      - '.github/workflows/mcp_server.yml' # FIXED: Matches your exact filename
+      - '**' # Triggers on any application context update across directories
+      - '.github/workflows/mcp_server.yml'
 
 jobs:
   deploy-mcp:
@@ -55,10 +55,22 @@ jobs:
       run: |
         gcloud auth configure-docker ${{ env.COMPUTE_REGION }}-docker.pkg.dev --quiet
 
-    # 6. Containerize your code and upload assets securely to your mcp-server-repo registry
+    # 6. Containerize your code by dynamically identifying the application root path
     - name: Build and Push Docker Container
       run: |
-        docker build -t ${{ env.COMPUTE_REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/mcp-server-repo/bq-mcp-analytics-engine:${{ github.sha }} -t ${{ env.COMPUTE_REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/mcp-server-repo/bq-mcp-analytics-engine:latest ./mcp_server_app
+        echo "🔍 Locating application directory housing your Dockerfile..."
+        # Finds the directory containing the Dockerfile, ignoring the root directory if it's top-level
+        APP_PATH=$(find . -name "Dockerfile" -not -path "./Dockerfile" -printf '%h\n' -quit)
+        
+        # Fallback to root context if no subfolder Dockerfile matches
+        if [ -z "$APP_PATH" ]; then
+          echo "⚠️ Specific subfolder Dockerfile not found. Falling back to repository root directory context."
+          APP_PATH="."
+        fi
+        
+        echo "Building Docker image utilizing path target context: $APP_PATH"
+        
+        docker build -t ${{ env.COMPUTE_REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/mcp-server-repo/bq-mcp-analytics-engine:${{ github.sha }} -t ${{ env.COMPUTE_REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/mcp-server-repo/bq-mcp-analytics-engine:latest "$APP_PATH"
         docker push ${{ env.COMPUTE_REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/mcp-server-repo/bq-mcp-analytics-engine:${{ github.sha }}
         docker push ${{ env.COMPUTE_REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/mcp-server-repo/bq-mcp-analytics-engine:latest
 
