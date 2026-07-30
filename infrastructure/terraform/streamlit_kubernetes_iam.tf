@@ -74,7 +74,8 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   ingress  = "INGRESS_TRAFFIC_ALL"
 
   template {
-    service_account = "adk-agent-runner@://gserviceaccount.com"
+    # Exact requested service account email address used explicitly
+    service_account = "adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
 
     containers {
       image = "europe-west1-docker.pkg.dev/agentic-ai-502518/streamlit-apps/streamlit-frontend:latest"
@@ -113,19 +114,21 @@ resource "google_cloud_run_v2_service_iam_member" "public_access" {
 
 
 # ====================================================================
-# 6. IDENTITY BINDINGS USING STATIC SERVICE ACCOUNT VALUES
+# 6. IDENTITY BINDINGS WITH FULL CORRECT RECOGNIZED PATH STRINGS
 # ====================================================================
 
 # Workload Identity: Links your GKE deployment pods to your exact runner account
 resource "google_service_account_iam_member" "gke_workload_identity" {
-  service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@://gserviceaccount.com"
+  # FIXED: Complete valid string format with exact email matching the GCP expression syntax
+  service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:agentic-ai-502518.svc.id.goog[default/streamlit-service-account]"
 }
 
 # Deployer Impersonation: Grants manual invocation privileges over your exact runner account
 resource "google_service_account_iam_member" "deployer_impersonation" {
-  service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@://gserviceaccount.com"
+  # FIXED: Complete valid string format with exact email matching the GCP expression syntax
+  service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
   role               = "roles/iam.serviceAccountUser"
   member             = "user:lakshmikanth.avh1b@gmail.com"
 }
