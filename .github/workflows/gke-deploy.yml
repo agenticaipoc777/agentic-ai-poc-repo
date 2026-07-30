@@ -13,7 +13,6 @@ jobs:
     name: Build, Containerize & Deploy to Kubernetes
     runs-on: ubuntu-latest
 
-    # Crucial security scope for safe cloud authentication tokens
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -23,20 +22,30 @@ jobs:
     - name: Checkout Source Code
       uses: actions/checkout@v4
 
-    # 2. Extract configuration variables dynamically from variables.tf
+    # 2. Automatically locate variables.tf and extract configuration properties
     - name: Parse Terraform Variables
       id: tf_vars
       run: |
-        # Robust parsing pattern targeting exact variable blocks and clean strings
-        PROJECT_ID=$(awk '/variable "project_id"/ {flag=1; next} /}/ {flag=0} flag && /default/ {print $3}' variables.tf | tr -d '"')
-        COMPUTE_REGION=$(awk '/variable "vertex_compute_region"/ {flag=1; next} /}/ {flag=0} flag && /default/ {print $3}' variables.tf | tr -d '"')
+        echo "🔍 Searching for variables.tf inside the workspace..."
+        VAR_FILE_PATH=$(find . -name "variables.tf" -print -quit)
+        
+        if [ -z "$VAR_FILE_PATH" ]; then
+          echo "❌ ERROR: variables.tf could not be found anywhere in this repository branch!"
+          exit 1
+        fi
+        
+        echo "Found variable tracking manifest at: $VAR_FILE_PATH"
+        
+        # Robust parsing pattern targeting exact variable blocks using the discovered path
+        PROJECT_ID=$(awk '/variable "project_id"/ {flag=1; next} /}/ {flag=0} flag && /default/ {print $3}' "$VAR_FILE_PATH" | tr -d '"')
+        COMPUTE_REGION=$(awk '/variable "vertex_compute_region"/ {flag=1; next} /}/ {flag=0} flag && /default/ {print $3}' "$VAR_FILE_PATH" | tr -d '"')
         
         echo "Extracted Project ID: $PROJECT_ID"
         echo "Extracted Compute Region: $COMPUTE_REGION"
         
         # Verify extraction succeeded before moving forward
         if [ -z "$PROJECT_ID" ] || [ -z "$COMPUTE_REGION" ]; then
-          echo "❌ ERROR: Failed to extract values from variables.tf. Check naming structure."
+          echo "❌ ERROR: Failed to parse values from $VAR_FILE_PATH. Check structure layout."
           exit 1
         fi
         
@@ -54,7 +63,7 @@ jobs:
     - name: Configure Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
 
-    # 5. Bind Docker authorization to your dynamic Compute Region from variables.tf
+    # 5. Bind Docker authorization to your dynamic Compute Region
     - name: Configure Docker Authentication
       run: |
         gcloud auth configure-docker ${{ env.COMPUTE_REGION }}-docker.pkg.dev --quiet
