@@ -1,5 +1,5 @@
 # ====================================================================
-# 0. AUTOMATED IMPORTS: Maps existing infra without touching vertex_ai assets
+# 0. AUTOMATED IMPORTS: Dynamic resource mapping
 # ====================================================================
 
 import {
@@ -28,8 +28,8 @@ import {
 # ====================================================================
 resource "google_workbench_instance" "adk_predictive_workbench" {
   name     = "adk-predictive-analysis-instance"
-  project  = "agentic-ai-502518"
-  location = "europe-west1-b"
+  project  = var.project_id
+  location = "${var.vertex_compute_region}-b" # Appends the zone dynamically to your compute region
 }
 
 
@@ -37,8 +37,8 @@ resource "google_workbench_instance" "adk_predictive_workbench" {
 # 2. ARTIFACT REGISTRY: Shared Docker repository for Streamlit images
 # ====================================================================
 resource "google_artifact_registry_repository" "app_repo" {
-  project       = "agentic-ai-502518"
-  location      = "europe-west1"
+  project       = var.project_id
+  location      = var.vertex_compute_region
   repository_id = "streamlit-apps"
   format        = "DOCKER"
   description   = "Docker repository for Streamlit frontend apps"
@@ -50,12 +50,12 @@ resource "google_artifact_registry_repository" "app_repo" {
 # ====================================================================
 resource "google_container_cluster" "gke_cluster" {
   name             = "adk-analytics-gke-cluster"
-  project          = "agentic-ai-502518"
-  location         = "europe-west1"
+  project          = var.project_id
+  location         = var.vertex_compute_region
   enable_autopilot = true
 
-  network    = "projects/agentic-ai-502518/global/networks/default"
-  subnetwork = "projects/agentic-ai-502518/regions/europe-west1/subnetworks/default"
+  network    = "projects/${var.project_id}/global/networks/default"
+  subnetwork = "projects/${var.project_id}/regions/${var.vertex_compute_region}/subnetworks/default"
 
   ip_allocation_policy {
     cluster_ipv4_cidr_block  = ""
@@ -68,17 +68,17 @@ resource "google_container_cluster" "gke_cluster" {
 # 4. CLOUD RUN SERVICE: Serverless frontend option
 # ====================================================================
 resource "google_cloud_run_v2_service" "streamlit_service" {
-  project  = "agentic-ai-502518"
+  project  = var.project_id
   name     = "bq-analytics-frontend"
-  location = "europe-west1"
+  location = var.vertex_compute_region
   ingress  = "INGRESS_TRAFFIC_ALL"
 
   template {
-    # VERIFIED: Using your exact service account email address explicitly
-    service_account = "adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
+    # Uses your explicit requested service account email address with variable interpolation
+    service_account = "adk-agent-runner@${var.project_id}.iam.gserviceaccount.com"
 
     containers {
-      image = "europe-west1-docker.pkg.dev/agentic-ai-502518/streamlit-apps/streamlit-frontend:latest"
+      image = "${var.vertex_compute_region}-docker.pkg.dev/${var.project_id}/streamlit-apps/streamlit-frontend:latest"
 
       ports {
         container_port = 8080
@@ -102,21 +102,19 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
 
 
 # ====================================================================
-# 5. IDENTITY BINDINGS USING STATIC SERVICE ACCOUNT VALUES
+# 5. IDENTITY BINDINGS USING VARIABLE-DRIVEN SERVICE ACCOUNT VALUES
 # ====================================================================
 
 # Workload Identity: Links your GKE deployment pods to your exact runner account
 resource "google_service_account_iam_member" "gke_workload_identity" {
-  # VERIFIED: Using your exact service account identifier path
-  service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
+  service_account_id = "projects/${var.project_id}/serviceAccounts/adk-agent-runner@${var.project_id}.iam.gserviceaccount.com"
   role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:agentic-ai-502518.svc.id.goog[default/streamlit-service-account]"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[default/streamlit-service-account]"
 }
 
 # Deployer Impersonation: Grants manual invocation privileges over your exact runner account
 resource "google_service_account_iam_member" "deployer_impersonation" {
-  # VERIFIED: Using your exact service account identifier path
-  service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
+  service_account_id = "projects/${var.project_id}/serviceAccounts/adk-agent-runner@${var.project_id}.iam.gserviceaccount.com"
   role               = "roles/iam.serviceAccountUser"
   member             = "user:lakshmikanth.avh1b@gmail.com"
 }
