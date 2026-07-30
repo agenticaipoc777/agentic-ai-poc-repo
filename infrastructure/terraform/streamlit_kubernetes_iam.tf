@@ -1,12 +1,6 @@
 # ====================================================================
-# 0. AUTOMATED IMPORTS: Maps all existing GCP resources into your state
+# 0. AUTOMATED IMPORTS: Maps existing infra without touching vertex_ai assets
 # ====================================================================
-
-import {
-  to = google_service_account.agent_runner
-  # FIXED: The ID string for importing a service account must use the full projects/ path
-  id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
-}
 
 import {
   to = google_artifact_registry_repository.app_repo
@@ -30,18 +24,7 @@ import {
 
 
 # ====================================================================
-# 1. CORE IDENTITY: Service Account Creation & Management
-# ====================================================================
-resource "google_service_account" "agent_runner" {
-  project      = "agentic-ai-502518"
-  account_id   = "adk-agent-runner"
-  display_name = "ADK Agent Runner Service Account"
-  description  = "Managed runtime service account for GKE and Cloud Run Streamlit apps"
-}
-
-
-# ====================================================================
-# 2. VERTEX AI WORKBENCH: Machine learning workspace setup
+# 1. VERTEX AI WORKBENCH: Machine learning workspace setup
 # ====================================================================
 resource "google_workbench_instance" "adk_predictive_workbench" {
   name     = "adk-predictive-analysis-instance"
@@ -51,7 +34,7 @@ resource "google_workbench_instance" "adk_predictive_workbench" {
 
 
 # ====================================================================
-# 3. ARTIFACT REGISTRY: Shared Docker repository for Streamlit images
+# 2. ARTIFACT REGISTRY: Shared Docker repository for Streamlit images
 # ====================================================================
 resource "google_artifact_registry_repository" "app_repo" {
   project       = "agentic-ai-502518"
@@ -63,7 +46,7 @@ resource "google_artifact_registry_repository" "app_repo" {
 
 
 # ====================================================================
-# 4. GKE KUBERNETES CLUSTER: Autopilot engine
+# 3. GKE KUBERNETES CLUSTER: Autopilot engine
 # ====================================================================
 resource "google_container_cluster" "gke_cluster" {
   name             = "adk-analytics-gke-cluster"
@@ -82,7 +65,7 @@ resource "google_container_cluster" "gke_cluster" {
 
 
 # ====================================================================
-# 5. CLOUD RUN SERVICE: Serverless frontend option
+# 4. CLOUD RUN SERVICE: Serverless frontend option
 # ====================================================================
 resource "google_cloud_run_v2_service" "streamlit_service" {
   project  = "agentic-ai-502518"
@@ -91,7 +74,7 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   ingress  = "INGRESS_TRAFFIC_ALL"
 
   template {
-    # Hardcoded to your absolute identity to avoid any parsing/interpolation issues
+    # FIXED: Hardcoded your exact service account email address directly
     service_account = "adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
 
     containers {
@@ -119,7 +102,7 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
 
 
 # ====================================================================
-# 6. PUBLIC ROUTING: Allows anonymous web entry to Cloud Run
+# 5. PUBLIC ROUTING: Allows anonymous web entry to Cloud Run
 # ====================================================================
 resource "google_cloud_run_v2_service_iam_member" "public_access" {
   project  = "agentic-ai-502518"
@@ -131,42 +114,31 @@ resource "google_cloud_run_v2_service_iam_member" "public_access" {
 
 
 # ====================================================================
-# 7. IDENTITY BINDINGS: Maps structural runtime parameters securely
+# 6. IDENTITY BINDINGS USING STATIC SERVICE ACCOUNT VALUES
 # ====================================================================
 
-# Workload Identity: Links your GKE deployment pods to the runner account
+# Workload Identity: Links your GKE deployment pods to your exact runner account
 resource "google_service_account_iam_member" "gke_workload_identity" {
+  # FIXED: Pointed to the exact service account identifier string
   service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:agentic-ai-502518.svc.id.goog[default/streamlit-service-account]"
 }
 
-# Deployer Impersonation: Grants explicit manual invocation privileges 
+# Deployer Impersonation: Grants manual invocation privileges over your exact runner account
 resource "google_service_account_iam_member" "deployer_impersonation" {
+  # FIXED: Pointed to the exact service account identifier string
   service_account_id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
   role               = "roles/iam.serviceAccountUser"
   member             = "user:lakshmikanth.avh1b@gmail.com"
 }
 
-# Vertex AI Access: Allows the core service account executing backend queries
-resource "google_project_iam_member" "runner_vertex_access" {
-  project = "agentic-ai-502518"
-  role    = "roles/aiplatform.user"
-  member  = "serviceAccount:adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
-}
-
-# Artifact Registry Reader: Authorizes pulling backend container assets
+# Artifact Registry Reader: Authorizes your exact runner account to pull container assets
 resource "google_artifact_registry_repository_iam_member" "runner_registry_reader" {
   project    = "agentic-ai-502518"
   location   = "europe-west1"
   repository = "streamlit-apps"
   role       = "roles/artifactregistry.reader"
+  # FIXED: Explicitly sets your target runner service account email string
   member     = "serviceAccount:adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
-}
-
-# Storage Bucket Reader: Granting object viewer access to your staging bucket
-resource "google_storage_bucket_iam_member" "agent_storage_reader" {
-  bucket = "agentic-ai-502518-eu-adk-staging-bucket"
-  role   = "roles/storage.objectViewer"
-  member = "serviceAccount:adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
 }
