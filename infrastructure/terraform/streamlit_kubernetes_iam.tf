@@ -1,9 +1,10 @@
 # ====================================================================
-# 0. AUTOMATED IMPORTS: Pulls existing GCP resources into state
+# 0. AUTOMATED IMPORTS: Maps all existing GCP resources into your state
 # ====================================================================
+
 import {
   to = google_service_account.agent_runner
-  id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@agentic-ai-502518.iam.gserviceaccount.com"
+  id = "projects/agentic-ai-502518/serviceAccounts/adk-agent-runner@://gserviceaccount.com"
 }
 
 import {
@@ -11,8 +12,24 @@ import {
   id = "projects/agentic-ai-502518/locations/europe-west1/repositories/streamlit-apps"
 }
 
+import {
+  to = google_workbench_instance.adk_predictive_workbench
+  id = "projects/agentic-ai-502518/locations/europe-west1-b/instances/adk-predictive-analysis-instance"
+}
+
+import {
+  to = google_container_cluster.gke_cluster
+  id = "projects/agentic-ai-502518/locations/europe-west1/clusters/adk-analytics-gke-cluster"
+}
+
+import {
+  to = google_cloud_run_v2_service.streamlit_service
+  id = "projects/agentic-ai-502518/locations/europe-west1/services/bq-analytics-frontend"
+}
+
+
 # ====================================================================
-# 1. CORE IDENTITY: Service Account management
+# 1. CORE IDENTITY: Service Account Creation & Management
 # ====================================================================
 resource "google_service_account" "agent_runner" {
   project      = "agentic-ai-502518"
@@ -21,8 +38,19 @@ resource "google_service_account" "agent_runner" {
   description  = "Managed runtime service account for GKE and Cloud Run Streamlit apps"
 }
 
+
 # ====================================================================
-# 2. ARTIFACT REGISTRY: Shared Docker repository for Streamlit images
+# 2. VERTEX AI WORKBENCH: Machine learning workspace setup
+# ====================================================================
+resource "google_workbench_instance" "adk_predictive_workbench" {
+  name     = "adk-predictive-analysis-instance"
+  project  = "agentic-ai-502518"
+  location = "europe-west1-b"
+}
+
+
+# ====================================================================
+# 3. ARTIFACT REGISTRY: Shared Docker repository for Streamlit images
 # ====================================================================
 resource "google_artifact_registry_repository" "app_repo" {
   project       = "agentic-ai-502518"
@@ -32,8 +60,9 @@ resource "google_artifact_registry_repository" "app_repo" {
   description   = "Docker repository for Streamlit frontend apps"
 }
 
+
 # ====================================================================
-# 3. GKE KUBERNETES CLUSTER: Autopilot engine
+# 4. GKE KUBERNETES CLUSTER: Autopilot engine
 # ====================================================================
 resource "google_container_cluster" "gke_cluster" {
   name             = "adk-analytics-gke-cluster"
@@ -50,8 +79,9 @@ resource "google_container_cluster" "gke_cluster" {
   }
 }
 
+
 # ====================================================================
-# 4. CLOUD RUN SERVICE: Serverless hosting option
+# 5. CLOUD RUN SERVICE: Serverless frontend option
 # ====================================================================
 resource "google_cloud_run_v2_service" "streamlit_service" {
   project  = "agentic-ai-502518"
@@ -60,7 +90,7 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   ingress  = "INGRESS_TRAFFIC_ALL"
 
   template {
-    # Dynamically reads the clean email string from your resource configuration
+    # Programmatically binds the service account email
     service_account = google_service_account.agent_runner.email
 
     containers {
@@ -86,8 +116,9 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   depends_on = [google_service_account_iam_member.deployer_impersonation]
 }
 
+
 # ====================================================================
-# 5. CLOUD RUN IAM: Public internet access configuration
+# 6. PUBLIC ROUTING: Allows anonymous web entry to Cloud Run
 # ====================================================================
 resource "google_cloud_run_v2_service_iam_member" "public_access" {
   project  = "agentic-ai-502518"
@@ -97,32 +128,33 @@ resource "google_cloud_run_v2_service_iam_member" "public_access" {
   member   = "allUsers"
 }
 
+
 # ====================================================================
-# 6. IAM & SECURITY BINDINGS
+# 7. IDENTITY BINDINGS: Maps structural runtime parameters securely
 # ====================================================================
 
-# Workload Identity: Links GKE pods to your exact runner account
+# Workload Identity: Links your GKE deployment pods to the runner account
 resource "google_service_account_iam_member" "gke_workload_identity" {
   service_account_id = google_service_account.agent_runner.name
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:agentic-ai-502518.svc.id.goog[default/streamlit-service-account]"
 }
 
-# Deployer Impersonation: Allows you to deploy manually using the runner identity
+# Deployer Impersonation: Grants explicit manual invocation privileges 
 resource "google_service_account_iam_member" "deployer_impersonation" {
   service_account_id = google_service_account.agent_runner.name
   role               = "roles/iam.serviceAccountUser"
   member             = "user:lakshmikanth.avh1b@gmail.com"
 }
 
-# Vertex AI Access: Runtime execution permission for the runner
+# Vertex AI Access: Allows the core service account executing backend queries
 resource "google_project_iam_member" "runner_vertex_access" {
   project = "agentic-ai-502518"
   role    = "roles/aiplatform.user"
   member  = "serviceAccount:${google_service_account.agent_runner.email}"
 }
 
-# Artifact Registry Reader: Permits the runner to pull custom Docker images
+# Artifact Registry Reader: Authorizes pulling backend container assets
 resource "google_artifact_registry_repository_iam_member" "runner_registry_reader" {
   project    = "agentic-ai-502518"
   location   = google_artifact_registry_repository.app_repo.location
