@@ -8,10 +8,10 @@ import {
   id = "projects/agentic-ai-502518/locations/europe-west1/repositories/mcp-server-repo"
 }
 
-# FULLY FIXED: Eliminated the broken text formatting string completely
+# Adopt existing service account identity safely
 import {
   to = google_service_account.mcp_runner
-  id = "projects/agentic-ai-502518/serviceAccounts/mcp-server-runner@agentic-ai-502518.iam.gserviceaccount.com"
+  id = "projects/agentic-ai-502518/serviceAccounts/mcp-server-runner@://gserviceaccount.com"
 }
 
 
@@ -38,14 +38,16 @@ resource "google_service_account" "mcp_runner" {
 
 
 # ====================================================================
-# 3. IDENTITY BINDINGS (DATA ACCESS ENGINES)
+# 3. IDENTITY BINDINGS (WHAT ACCESS THE MCP SERVER SA NEEDS)
 # ====================================================================
+# Role A: Allows the MCP Server to run queries and manage compute tasks
 resource "google_project_iam_member" "mcp_bq_job_user" {
   project = var.project_id
   role    = "roles/bigquery.jobUser"
   member  = "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
 }
 
+# Role B: Allows the MCP Server to read actual row data inside BigQuery datasets
 resource "google_project_iam_member" "mcp_bq_data_viewer" {
   project = var.project_id
   role    = "roles/bigquery.dataViewer"
@@ -60,14 +62,16 @@ resource "google_cloud_run_v2_service" "mcp_server" {
   project  = var.project_id
   name     = "bq-mcp-analytics-engine"
   location = var.vertex_compute_region
-  ingress  = "INGRESS_TRAFFIC_ALL"
+  
+  # YES - This is required to let the internet route traffic to the container port
+  ingress  = "INGRESS_TRAFFIC_ALL" 
 
   template {
     service_account = "mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
-
+    
     containers {
       image = "us-docker.pkg.dev/cloudrun/container/hello:latest"
-
+      
       ports {
         container_port = 8080
       }
@@ -76,19 +80,25 @@ resource "google_cloud_run_v2_service" "mcp_server" {
 
   lifecycle {
     ignore_changes = [
-      template[0].containers
+      template.containers
     ]
   }
 }
 
 
 # ====================================================================
-# 5. ACCESS CONTROLS: FIXED FOR UNRESTRICTED PUBLIC ACCESS
+# 5. ZERO-TRUST ACCESS CONTROLS (WHO CAN INVOKE THE CLOUD RUN URL)
 # ====================================================================
-resource "google_cloud_run_v2_service_iam_member" "mcp_public_access" {
+resource "google_cloud_run_v2_service_iam_binding" "mcp_no_auth" {
   project  = var.project_id
   location = google_cloud_run_v2_service.mcp_server.location
   name     = google_cloud_run_v2_service.mcp_server.name
   role     = "roles/run.invoker"
-  member   = "allUsers" # FIXED: Allows unauthenticated internet traffic to access your MCP endpoints
+  members = [
+    # Allows the MCP server to call itself securely if needed
+    "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com",
+    
+    # FIXED: Added your verified user account here to grant access privileges
+    "user:lakshmikanth.avh1b@gmail.com" 
+  ]
 }
