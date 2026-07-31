@@ -8,10 +8,10 @@ import {
   id = "projects/agentic-ai-502518/locations/europe-west1/repositories/mcp-server-repo"
 }
 
-# Links the existing custom service account into state
+# FIXED: Corrected the broken URI path string to match your exact IAM identity
 import {
   to = google_service_account.mcp_runner
-  id = "projects/agentic-ai-502518/serviceAccounts/mcp-server-runner@://gserviceaccount.com"
+  id = "projects/agentic-ai-502518/serviceAccounts/mcp-server-runner@agentic-ai-502518.iam.gserviceaccount.com"
 }
 
 # Links the existing physical Cloud Run service to prevent 409 Resource Already Exists errors
@@ -49,35 +49,30 @@ resource "google_service_account" "mcp_runner" {
 resource "google_project_iam_member" "mcp_bq_job_user" {
   project = var.project_id
   role    = "roles/bigquery.jobUser"
-  # FIXED: Replaced brittle hardcoded strings with dynamic resource element reference
   member  = "serviceAccount:${google_service_account.mcp_runner.email}"
 }
 
 resource "google_project_iam_member" "mcp_bq_data_viewer" {
   project = var.project_id
   role    = "roles/bigquery.dataViewer"
-  # FIXED: Replaced brittle hardcoded strings with dynamic resource element reference
   member  = "serviceAccount:${google_service_account.mcp_runner.email}"
 }
 
 resource "google_project_iam_member" "mcp_vertex_user" {
   project = var.project_id
   role    = "roles/aiplatform.user"
-  # FIXED: Replaced brittle hardcoded strings with dynamic resource element reference
   member  = "serviceAccount:${google_service_account.mcp_runner.email}"
 }
 
 resource "google_project_iam_member" "mcp_vertex_viewer" {
   project = var.project_id
   role    = "roles/aiplatform.viewer"
-  # FIXED: Replaced brittle hardcoded strings with dynamic resource element reference
   member  = "serviceAccount:${google_service_account.mcp_runner.email}"
 }
 
 resource "google_project_iam_member" "mcp_discovery_viewer" {
   project = var.project_id
   role    = "roles/discoveryengine.viewer"
-  # FIXED: Replaced brittle hardcoded strings with dynamic resource element reference
   member  = "serviceAccount:${google_service_account.mcp_runner.email}"
 }
 
@@ -102,7 +97,6 @@ resource "google_cloud_run_v2_service" "mcp_server" {
     }
   }
 
-  # FIXED: Applied the correct explicit array index syntax required for the ignore_changes evaluator
   lifecycle {
     ignore_changes = [
       template[0].containers,
@@ -111,7 +105,6 @@ resource "google_cloud_run_v2_service" "mcp_server" {
     ]
   }
 }
-
 
 
 # ====================================================================
