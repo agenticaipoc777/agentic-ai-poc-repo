@@ -194,8 +194,11 @@ import {
 resource "google_vertex_ai_reasoning_engine" "bq_analytics_engine" {
   provider     = google-beta
   project      = var.project_id
-  region       = "europe-west1" # <-- CHANGED FROM location TO region
+  region       = "europe-west1"
   display_name = "BigQuery_Analytics_Vertex_Agent"
+
+  # ADD THIS LINE TO FORCE PURGE ACTIVE CHAT SESSIONS / LOG DEPENDENCIES
+  deletion_automated_resources = true
 
   spec {
     package_spec {
@@ -204,3 +207,4 @@ resource "google_vertex_ai_reasoning_engine" "bq_analytics_engine" {
     }
   }
 }
+

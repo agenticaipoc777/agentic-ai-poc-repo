@@ -8,10 +8,16 @@ import {
   id = "projects/agentic-ai-502518/locations/europe-west1/repositories/mcp-server-repo"
 }
 
-# FIXED: Reconstructed with your complete project namespace domain to eliminate parsing failures
+# Links the existing custom service account into state
 import {
   to = google_service_account.mcp_runner
   id = "projects/agentic-ai-502518/serviceAccounts/mcp-server-runner@agentic-ai-502518.iam.gserviceaccount.com"
+}
+
+# FIXED: Links the existing physical Cloud Run service to prevent 409 Resource Already Exists errors
+import {
+  to = google_cloud_run_v2_service.mcp_server
+  id = "projects/agentic-ai-502518/locations/europe-west1/services/bq-mcp-analytics-engine"
 }
 
 
@@ -40,35 +46,30 @@ resource "google_service_account" "mcp_runner" {
 # 3. IDENTITY BINDINGS (WHAT ACCESS THE MCP SERVER SA NEEDS)
 # ====================================================================
 
-# Role A: Allows the MCP Server to run queries and manage compute tasks
 resource "google_project_iam_member" "mcp_bq_job_user" {
   project = var.project_id
   role    = "roles/bigquery.jobUser"
   member  = "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
 }
 
-# Role B: Allows the MCP Server to read actual row data inside BigQuery datasets
 resource "google_project_iam_member" "mcp_bq_data_viewer" {
   project = var.project_id
   role    = "roles/bigquery.dataViewer"
   member  = "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
 }
 
-# Role C: Grants core machine learning resource invocation rights
 resource "google_project_iam_member" "mcp_vertex_user" {
   project = var.project_id
   role    = "roles/aiplatform.user"
   member  = "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
 }
 
-# Role D: Grants explicit permission to inspect metadata on reasoning engine pipelines
 resource "google_project_iam_member" "mcp_vertex_viewer" {
   project = var.project_id
   role    = "roles/aiplatform.viewer"
   member  = "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
 }
 
-# Role E: Resolves Discovery Engine / Agent Builder validation checks used by modern vertexai SDKs
 resource "google_project_iam_member" "mcp_discovery_viewer" {
   project = var.project_id
   role    = "roles/discoveryengine.viewer"
@@ -97,17 +98,17 @@ resource "google_cloud_run_v2_service" "mcp_server" {
     }
   }
 
-  # FIXED: Numeric index mapping applied to track block object properties accurately
+  # FIXED: Corrected block path notation for Cloud Run V2 structures (removes the schema parsing error)
   lifecycle {
     ignore_changes = [
-      template[0].containers
+      template.0.containers
     ]
   }
 }
 
 
 # ====================================================================
-# 5. UNRESTRICTED PUBLIC ACCESS: Changes "Require authentication" to "Public access"
+# 5. UNRESTRICTED PUBLIC ACCESS
 # ====================================================================
 resource "google_cloud_run_v2_service_iam_member" "mcp_public_access" {
   project  = var.project_id
