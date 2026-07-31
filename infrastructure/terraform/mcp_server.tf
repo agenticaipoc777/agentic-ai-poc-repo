@@ -14,7 +14,7 @@ import {
   id = "projects/agentic-ai-502518/serviceAccounts/mcp-server-runner@agentic-ai-502518.iam.gserviceaccount.com"
 }
 
-# FIXED: Links the existing physical Cloud Run service to prevent 409 Resource Already Exists errors
+# Links the existing physical Cloud Run service to prevent 409 Resource Already Exists errors
 import {
   to = google_cloud_run_v2_service.mcp_server
   id = "projects/agentic-ai-502518/locations/europe-west1/services/bq-mcp-analytics-engine"
@@ -98,10 +98,10 @@ resource "google_cloud_run_v2_service" "mcp_server" {
     }
   }
 
-  # FIXED: Corrected block path notation for Cloud Run V2 structures (removes the schema parsing error)
+  # FIXED: Bracket notation mapping applied to track block container properties accurately
   lifecycle {
     ignore_changes = [
-      template.0.containers
+      template[0].containers
     ]
   }
 }

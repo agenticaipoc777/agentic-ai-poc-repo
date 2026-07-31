@@ -197,14 +197,20 @@ resource "google_vertex_ai_reasoning_engine" "bq_analytics_engine" {
   region       = "europe-west1"
   display_name = "BigQuery_Analytics_Vertex_Agent"
 
-  # ADD THIS LINE TO FORCE PURGE ACTIVE CHAT SESSIONS / LOG DEPENDENCIES
-  deletion_automated_resources = true
-
   spec {
     package_spec {
       # Points to your existing staging bucket shown in the console image
       pickle_object_gcs_uri = "gs://${google_storage_bucket.adk_staging.name}/agents/bq_analytics_agent.pkl"
     }
   }
+
+  # FIXED: Stops Terraform from attempting destructive updates that trigger active session blocks
+  lifecycle {
+    ignore_changes = [
+      spec
+    ]
+  }
 }
+
+
 
