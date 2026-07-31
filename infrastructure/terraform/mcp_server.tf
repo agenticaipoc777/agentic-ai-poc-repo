@@ -43,37 +43,42 @@ resource "google_service_account" "mcp_runner" {
 }
 
 # ====================================================================
-# 3. IDENTITY BINDINGS (WHAT ACCESS THE MCP SERVER SA NEEDS)
+# 3. IDENTITY BINDINGS (DYNAMICALLY PATHED USING RE-USABLE RESOURCE REFS)
 # ====================================================================
 
 resource "google_project_iam_member" "mcp_bq_job_user" {
   project = var.project_id
   role    = "roles/bigquery.jobUser"
-  member  = "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
+  # FIXED: Replaced brittle hardcoded strings with dynamic resource element reference
+  member  = "serviceAccount:${google_service_account.mcp_runner.email}"
 }
 
 resource "google_project_iam_member" "mcp_bq_data_viewer" {
   project = var.project_id
   role    = "roles/bigquery.dataViewer"
-  member  = "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
+  # FIXED: Replaced brittle hardcoded strings with dynamic resource element reference
+  member  = "serviceAccount:${google_service_account.mcp_runner.email}"
 }
 
 resource "google_project_iam_member" "mcp_vertex_user" {
   project = var.project_id
   role    = "roles/aiplatform.user"
-  member  = "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
+  # FIXED: Replaced brittle hardcoded strings with dynamic resource element reference
+  member  = "serviceAccount:${google_service_account.mcp_runner.email}"
 }
 
 resource "google_project_iam_member" "mcp_vertex_viewer" {
   project = var.project_id
   role    = "roles/aiplatform.viewer"
-  member  = "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
+  # FIXED: Replaced brittle hardcoded strings with dynamic resource element reference
+  member  = "serviceAccount:${google_service_account.mcp_runner.email}"
 }
 
 resource "google_project_iam_member" "mcp_discovery_viewer" {
   project = var.project_id
   role    = "roles/discoveryengine.viewer"
-  member  = "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
+  # FIXED: Replaced brittle hardcoded strings with dynamic resource element reference
+  member  = "serviceAccount:${google_service_account.mcp_runner.email}"
 }
 
 
@@ -87,7 +92,8 @@ resource "google_cloud_run_v2_service" "mcp_server" {
   ingress  = "INGRESS_TRAFFIC_ALL" 
 
   template {
-    service_account = "mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
+    # FIXED: Replaced brittle hardcoded strings with dynamic resource element reference
+    service_account = google_service_account.mcp_runner.email
     
     containers {
       image = "us-docker.pkg.dev/cloudrun/container/hello:latest"
@@ -98,10 +104,9 @@ resource "google_cloud_run_v2_service" "mcp_server" {
     }
   }
 
-  # FIXED: Standard bracket sequence restored for exact container block matching
   lifecycle {
     ignore_changes = [
-      template[0].containers,
+      template.containers,
       ingress,
       labels
     ]
@@ -119,7 +124,6 @@ resource "google_cloud_run_v2_service_iam_member" "mcp_public_access" {
   role     = "roles/run.invoker"
   member   = "allUsers"
 
-  # FIXED: Removed unsupported parameter to allow clean initializations
   lifecycle {
     ignore_changes = [
       member,
