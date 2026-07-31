@@ -36,9 +36,9 @@ jobs:
         # 2. Upload the deployment package to your existing staging bucket
         gcloud storage cp agent_package.zip gs://agentic-ai-502518-eu-adk-staging-bucket/source/agent_package.zip
         
-        # 3. Trigger Vertex AI to pull the code package into the target engine ID
-        gcloud ai reasoning-engines update 5739512269641875456 \
+        # 3. FIXED: Changed flag from --gcs-source-file to --gcs-source-uri to properly trigger the engine refresh
+        gcloud beta ai reasoning-engines update 5739512269641875456 \
           --project="agentic-ai-502518" \
           --location="europe-west1" \
           --display-name="BigQuery_Analytics_Vertex_Agent" \
-          --gcs-source-file="gs://agentic-ai-502518-eu-adk-staging-bucket/source/agent_package.zip"
+          --gcs-source-uri="gs://agentic-ai-502518-eu-adk-staging-bucket/source/agent_package.zip"
