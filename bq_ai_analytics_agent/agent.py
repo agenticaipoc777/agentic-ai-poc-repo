@@ -18,7 +18,7 @@ class BigQueryAnalyticsAgent(Agent):
     def __init__(self):
         super().__init__(
             name="bq_ai_analytics_agent",
-            model="gemini-2.5-flash", 
+            model="gemini-2.5-pro", 
             description="Agent with direct access to discover and run analytics across all datasets inside your project.",
             instruction="""
 You are an expert data analyst with system access to a Google Cloud BigQuery project.

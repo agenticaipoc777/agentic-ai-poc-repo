@@ -1,0 +1,44 @@
+name: Deploy Vertex AI Reasoning Engine
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'agent.py'
+      - 'requirements.txt'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+    - name: Checkout Code Repository
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        # Paste your runner_credentials.json key into your GitHub repository secrets
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Package and Deploy Application Assets
+      run: |
+        # 1. Archive the core application scripts
+        zip -r agent_package.zip agent.py requirements.txt
+        
+        # 2. Upload the deployment package to your existing staging bucket
+        gcloud storage cp agent_package.zip gs://agentic-ai-502518-eu-adk-staging-bucket/source/agent_package.zip
+        
+        # 3. Trigger Vertex AI to pull the code package into the target engine ID
+        gcloud ai reasoning-engines update 5739512269641875456 \
+          --project="agentic-ai-502518" \
+          --location="europe-west1" \
+          --display-name="BigQuery_Analytics_Vertex_Agent" \
+          --gcs-source-file="gs://agentic-ai-502518-eu-adk-staging-bucket/source/agent_package.zip"
