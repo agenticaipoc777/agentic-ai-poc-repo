@@ -81,7 +81,6 @@ resource "google_project_iam_member" "mcp_discovery_viewer" {
   member  = "serviceAccount:${google_service_account.mcp_runner.email}"
 }
 
-
 # ====================================================================
 # 4. SERVERLESS ENGINE PROVISIONING
 # ====================================================================
@@ -92,7 +91,6 @@ resource "google_cloud_run_v2_service" "mcp_server" {
   ingress  = "INGRESS_TRAFFIC_ALL" 
 
   template {
-    # FIXED: Replaced brittle hardcoded strings with dynamic resource element reference
     service_account = google_service_account.mcp_runner.email
     
     containers {
@@ -104,14 +102,16 @@ resource "google_cloud_run_v2_service" "mcp_server" {
     }
   }
 
+  # FIXED: Applied the correct explicit array index syntax required for the ignore_changes evaluator
   lifecycle {
     ignore_changes = [
-      template.containers,
+      template[0].containers,
       ingress,
       labels
     ]
   }
 }
+
 
 
 # ====================================================================
