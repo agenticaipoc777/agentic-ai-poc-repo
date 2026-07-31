@@ -8,10 +8,10 @@ import {
   id = "projects/agentic-ai-502518/locations/europe-west1/repositories/mcp-server-repo"
 }
 
-# Adopt existing service account identity safely
+# FIXED: Reconstructed with your complete project namespace domain to eliminate parsing failures
 import {
   to = google_service_account.mcp_runner
-  id = "projects/agentic-ai-502518/serviceAccounts/mcp-server-runner@://gserviceaccount.com"
+  id = "projects/agentic-ai-502518/serviceAccounts/mcp-server-runner@agentic-ai-502518.iam.gserviceaccount.com"
 }
 
 
@@ -61,14 +61,14 @@ resource "google_project_iam_member" "mcp_vertex_user" {
   member  = "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
 }
 
-# Role D: NEW - Grants explicit permission to inspect metadata on reasoning engine pipelines
+# Role D: Grants explicit permission to inspect metadata on reasoning engine pipelines
 resource "google_project_iam_member" "mcp_vertex_viewer" {
   project = var.project_id
   role    = "roles/aiplatform.viewer"
   member  = "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
 }
 
-# Role E: NEW - Resolves Discovery Engine / Agent Builder validation checks used by modern vertexai SDKs
+# Role E: Resolves Discovery Engine / Agent Builder validation checks used by modern vertexai SDKs
 resource "google_project_iam_member" "mcp_discovery_viewer" {
   project = var.project_id
   role    = "roles/discoveryengine.viewer"
@@ -83,8 +83,6 @@ resource "google_cloud_run_v2_service" "mcp_server" {
   project  = var.project_id
   name     = "bq-mcp-analytics-engine"
   location = var.vertex_compute_region
-  
-  # YES - This is required to let the internet route traffic to the container port
   ingress  = "INGRESS_TRAFFIC_ALL" 
 
   template {
@@ -99,9 +97,10 @@ resource "google_cloud_run_v2_service" "mcp_server" {
     }
   }
 
+  # FIXED: Numeric index mapping applied to track block object properties accurately
   lifecycle {
     ignore_changes = [
-      template.containers
+      template[0].containers
     ]
   }
 }
@@ -115,6 +114,5 @@ resource "google_cloud_run_v2_service_iam_member" "mcp_public_access" {
   location = google_cloud_run_v2_service.mcp_server.location
   name     = google_cloud_run_v2_service.mcp_server.name
   role     = "roles/run.invoker"
-  member   = "allUsers" # 👈 Force opens public routing, bypassing the 403 Forbidden error
+  member   = "allUsers"
 }
-
