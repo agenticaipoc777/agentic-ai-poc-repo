@@ -179,12 +179,12 @@ resource "google_project_iam_member" "vertex_bq_job_user" {
   role    = "roles/bigquery.jobUser"
   member  = local.vertex_sa_member
 }
-
 # ====================================================================
 # 11. LINK EXISTING REASONING ENGINE TO TERRAFORM STATE
 # ====================================================================
 import {
   to = google_vertex_ai_reasoning_engine.bq_analytics_engine
+  # Make sure this target matches the schema path for state discovery
   id = "projects/661224241135/locations/europe-west1/reasoningEngines/5739512269641875456"
 }
 
@@ -194,7 +194,7 @@ import {
 resource "google_vertex_ai_reasoning_engine" "bq_analytics_engine" {
   provider     = google-beta
   project      = var.project_id
-  location     = "europe-west1"
+  region       = "europe-west1" # <-- CHANGED FROM location TO region
   display_name = "BigQuery_Analytics_Vertex_Agent"
 
   spec {
@@ -203,13 +203,4 @@ resource "google_vertex_ai_reasoning_engine" "bq_analytics_engine" {
       pickle_object_gcs_uri = "gs://${google_storage_bucket.adk_staging.name}/agents/bq_analytics_agent.pkl"
     }
   }
-}
-
-# ====================================================================
-# 13. GRANT REASONING ENGINE SERVICE AGENT ACCESS TO STAGING BUCKET
-# ====================================================================
-resource "google_storage_bucket_iam_member" "vertex_re_storage_admin" {
-  bucket = google_storage_bucket.adk_staging.name
-  role   = "roles/storage.admin"
-  member = local.vertex_sa_member
 }
