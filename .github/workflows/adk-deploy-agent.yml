@@ -19,26 +19,52 @@ jobs:
     - name: Checkout Code Repository
       uses: actions/checkout@v4
 
+    - name: Set up Python Environment
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install System Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install google-adk google-cloud-aiplatform[reasoningengine] google-cloud-bigquery
+
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v2
       with:
-        # Paste your runner_credentials.json key into your GitHub repository secrets
         credentials_json: ${{ secrets.GCP_SA_KEY }}
 
     - name: Set up Google Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
 
-    - name: Package and Deploy Application Assets
+    - name: Execute Native ADK Agent Upgrade
+      env:
+        GOOGLE_CLOUD_PROJECT: "agentic-ai-502518"
+        GOOGLE_CLOUD_LOCATION: "europe-west1"
+        GOOGLE_GENAI_USE_VERTEXAI: "True"
       run: |
-        # 1. Archive the core application scripts
-        zip -r agent_package.zip agent.py requirements.txt
+        # Use python execution to force trigger the ADK deployment package lifecycle
+        python -c "
+        import vertexai
+        from vertexai.preview import reasoning_engines
+        from agent import BigQueryAnalyticsAgent
         
-        # 2. Upload the deployment package to your existing staging bucket
-        gcloud storage cp agent_package.zip gs://agentic-ai-502518-eu-adk-staging-bucket/source/agent_package.zip
+        vertexai.init(project='agentic-ai-502518', location='europe-west1')
         
-        # 3. FIXED: Changed flag from --gcs-source-file to --gcs-source-uri to properly trigger the engine refresh
-        gcloud beta ai reasoning-engines update 5739512269641875456 \
-          --project="agentic-ai-502518" \
-          --location="europe-west1" \
-          --display-name="BigQuery_Analytics_Vertex_Agent" \
-          --gcs-source-uri="gs://agentic-ai-502518-eu-adk-staging-bucket/source/agent_package.zip"
+        print('Instantiating updated agent logic...')
+        root_agent = BigQueryAnalyticsAgent()
+        
+        resource_path = 'projects/661224241135/locations/europe-west1/reasoningEngines/5739512269641875456'
+        print(f'Connecting to targeted engine: {resource_path}')
+        
+        existing_engine = reasoning_engines.ReasoningEngine(resource_path)
+        existing_engine.update(
+            reasoning_class=root_agent,
+            requirements=[
+                'google-cloud-aiplatform[reasoningengine]',
+                'google-cloud-bigquery',
+                'python-dotenv'
+            ]
+        )
+        print('Agent codebase has successfully finished uploading to cloud storage!')
+        "
