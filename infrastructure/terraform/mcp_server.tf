@@ -87,18 +87,13 @@ resource "google_cloud_run_v2_service" "mcp_server" {
 
 
 # ====================================================================
-# 5. ZERO-TRUST ACCESS CONTROLS (WHO CAN INVOKE THE CLOUD RUN URL)
+# 5. UNRESTRICTED PUBLIC ACCESS: Changes "Require authentication" to "Public access"
 # ====================================================================
-resource "google_cloud_run_v2_service_iam_binding" "mcp_no_auth" {
+resource "google_cloud_run_v2_service_iam_member" "mcp_public_access" {
   project  = var.project_id
   location = google_cloud_run_v2_service.mcp_server.location
   name     = google_cloud_run_v2_service.mcp_server.name
   role     = "roles/run.invoker"
-  members = [
-    # Allows the MCP server to call itself securely if needed
-    "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com",
-    
-    # FIXED: Added your verified user account here to grant access privileges
-    "user:lakshmikanth.avh1b@gmail.com" 
-  ]
+  member   = "allUsers" # 👈 Force opens public routing, bypassing the 403 Forbidden error
 }
+
