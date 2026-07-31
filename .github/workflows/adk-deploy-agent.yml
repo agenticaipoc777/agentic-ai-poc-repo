@@ -28,7 +28,6 @@ jobs:
     - name: Install System Dependencies
       run: |
         python -m pip install --upgrade pip
-        # Installs your custom requirements including the google-adk framework
         pip install -r bq_ai_analytics_agent/requirements.txt
 
     - name: Authenticate to Google Cloud
@@ -41,11 +40,12 @@ jobs:
 
     - name: Execute Native ADK Engine Update Command
       run: |
-        # FIXED: Uses the production ADK CLI syntax to package and ship your directory completely
+        # FIXED: Swapped out invalid '--name' flag for exact '--engine_id' parameter
         adk deploy agent_engine \
           --project="agentic-ai-502518" \
           --region="europe-west1" \
-          --name="projects/661224241135/locations/europe-west1/reasoningEngines/5739512269641875456" \
+          --engine_id="5739512269641875456" \
+          --display_name="BigQuery_Analytics_Vertex_Agent" \
           --staging_bucket="gs://agentic-ai-502518-eu-adk-staging-bucket" \
           --requirements_file="bq_ai_analytics_agent/requirements.txt" \
           bq_ai_analytics_agent/
