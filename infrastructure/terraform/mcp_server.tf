@@ -40,6 +40,7 @@ resource "google_service_account" "mcp_runner" {
 # ====================================================================
 # 3. IDENTITY BINDINGS (WHAT ACCESS THE MCP SERVER SA NEEDS)
 # ====================================================================
+
 # Role A: Allows the MCP Server to run queries and manage compute tasks
 resource "google_project_iam_member" "mcp_bq_job_user" {
   project = var.project_id
@@ -53,6 +54,16 @@ resource "google_project_iam_member" "mcp_bq_data_viewer" {
   role    = "roles/bigquery.dataViewer"
   member  = "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
 }
+
+# Role C: Granting explicit Vertex AI execution rights to clear the 403 error
+# This provides the precise 'aiplatform.reasoningEngines.get' permission required
+# for the Streamlit app to map and load your active model reasoning engine.
+resource "google_project_iam_member" "mcp_vertex_user" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:mcp-server-runner@${var.project_id}.iam.gserviceaccount.com"
+}
+
 
 
 # ====================================================================
