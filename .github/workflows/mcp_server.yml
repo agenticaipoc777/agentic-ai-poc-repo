@@ -50,19 +50,30 @@ jobs:
     - name: Configure Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
 
-    # 5. Connect Docker to your variable-driven Artifact Registry endpoint
+    # 5. Set up HashiCorp Terraform binary toolset on the runner
+    - name: Setup Terraform CLI
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "1.9.0"
+
+    # 6. RUN TERRAFORM APPLY: Added to push your new project IAM roles to Google Cloud
+    - name: Terraform Apply Infrastructure
+      run: |
+        cd infrastructure/terraform
+        terraform init
+        terraform apply -auto-approve
+
+    # 7. Connect Docker to your variable-driven Artifact Registry endpoint
     - name: Configure Docker Authentication
       run: |
         gcloud auth configure-docker ${{ env.COMPUTE_REGION }}-docker.pkg.dev --quiet
 
-    # 6. Containerize your code by dynamically identifying the application root path
+    # 8. Containerize your code by dynamically identifying the application root path
     - name: Build and Push Docker Container
       run: |
         echo "🔍 Locating application directory housing your Dockerfile..."
-        # Finds the directory containing the Dockerfile, ignoring the root directory if it's top-level
         APP_PATH=$(find . -name "Dockerfile" -not -path "./Dockerfile" -printf '%h\n' -quit)
         
-        # Fallback to root context if no subfolder Dockerfile matches
         if [ -z "$APP_PATH" ]; then
           echo "⚠️ Specific subfolder Dockerfile not found. Falling back to repository root directory context."
           APP_PATH="."
@@ -74,7 +85,7 @@ jobs:
         docker push ${{ env.COMPUTE_REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/mcp-server-repo/bq-mcp-analytics-engine:${{ github.sha }}
         docker push ${{ env.COMPUTE_REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/mcp-server-repo/bq-mcp-analytics-engine:latest
 
-    # 7. Update the Cloud Run server instance image with zero structural downtime
+    # 9. Update the Cloud Run server instance image with zero structural downtime
     - name: Deploy to Cloud Run
       run: |
         gcloud run services update bq-mcp-analytics-engine \
