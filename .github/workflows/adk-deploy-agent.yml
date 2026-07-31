@@ -5,8 +5,9 @@ on:
     branches:
       - main
     paths:
-      - 'agent.py'
-      - 'requirements.txt'
+      # Pack and trigger whenever ANY file changes inside your agent directory
+      - 'bq_ai_analytics_agent/**'
+      - '.github/workflows/adk-deploy-agent.yml'
 
 jobs:
   deploy:
@@ -22,12 +23,13 @@ jobs:
     - name: Set up Python Environment
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: '3.11'
+        cache: 'pip'
 
     - name: Install System Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install google-adk google-cloud-aiplatform[reasoningengine] google-cloud-bigquery
+        pip install google-cloud-aiplatform[reasoningengine] google-cloud-bigquery python-dotenv
 
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v2
@@ -43,28 +45,8 @@ jobs:
         GOOGLE_CLOUD_LOCATION: "europe-west1"
         GOOGLE_GENAI_USE_VERTEXAI: "True"
       run: |
-        # Use python execution to force trigger the ADK deployment package lifecycle
-        python -c "
-        import vertexai
-        from vertexai.preview import reasoning_engines
-        from agent import BigQueryAnalyticsAgent
+        # Change execution context into your folder so the python engine packs the complete directory space
+        cd bq_ai_analytics_agent
         
-        vertexai.init(project='agentic-ai-502518', location='europe-west1')
-        
-        print('Instantiating updated agent logic...')
-        root_agent = BigQueryAnalyticsAgent()
-        
-        resource_path = 'projects/661224241135/locations/europe-west1/reasoningEngines/5739512269641875456'
-        print(f'Connecting to targeted engine: {resource_path}')
-        
-        existing_engine = reasoning_engines.ReasoningEngine(resource_path)
-        existing_engine.update(
-            reasoning_class=root_agent,
-            requirements=[
-                'google-cloud-aiplatform[reasoningengine]',
-                'google-cloud-bigquery',
-                'python-dotenv'
-            ]
-        )
-        print('Agent codebase has successfully finished uploading to cloud storage!')
-        "
+        # Execute your deployment script within its native folder workspace
+        python deploy_agent.py
