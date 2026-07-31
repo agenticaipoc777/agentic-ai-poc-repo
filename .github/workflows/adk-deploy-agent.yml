@@ -40,11 +40,11 @@ jobs:
 
     - name: Execute Native ADK Engine Update Command
       run: |
-        # FIXED: Swapped out invalid '--name' flag for exact '--engine_id' parameter
+        # FIXED: Changed '--engine_id' to '--agent_engine_id' based on the CLI error output
         adk deploy agent_engine \
           --project="agentic-ai-502518" \
           --region="europe-west1" \
-          --engine_id="5739512269641875456" \
+          --agent_engine_id="5739512269641875456" \
           --display_name="BigQuery_Analytics_Vertex_Agent" \
           --staging_bucket="gs://agentic-ai-502518-eu-adk-staging-bucket" \
           --requirements_file="bq_ai_analytics_agent/requirements.txt" \
