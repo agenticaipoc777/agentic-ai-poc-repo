@@ -11,7 +11,7 @@ import {
 # Links the existing custom service account into state
 import {
   to = google_service_account.mcp_runner
-  id = "projects/agentic-ai-502518/serviceAccounts/mcp-server-runner@agentic-ai-502518.iam.gserviceaccount.com"
+  id = "projects/agentic-ai-502518/serviceAccounts/mcp-server-runner@://gserviceaccount.com"
 }
 
 # Links the existing physical Cloud Run service to prevent 409 Resource Already Exists errors
@@ -98,10 +98,10 @@ resource "google_cloud_run_v2_service" "mcp_server" {
     }
   }
 
-  # FIXED: Added field ignore mappings to prevent IAM validation policy block errors
+  # FIXED: Standard bracket sequence restored for exact container block matching
   lifecycle {
     ignore_changes = [
-      template.0.containers,
+      template[0].containers,
       ingress,
       labels
     ]
@@ -119,9 +119,11 @@ resource "google_cloud_run_v2_service_iam_member" "mcp_public_access" {
   role     = "roles/run.invoker"
   member   = "allUsers"
 
-  # FIXED: Tells Terraform to skip evaluation if the platform organization restricts public endpoints
+  # FIXED: Removed unsupported parameter to allow clean initializations
   lifecycle {
-    skip_creations_distinct_errors = true  # Gracefully handle restricted public policies
-    ignore_changes                 = [member, role]
+    ignore_changes = [
+      member,
+      role
+    ]
   }
 }
