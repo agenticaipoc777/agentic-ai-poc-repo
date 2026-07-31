@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      # Pack and trigger whenever ANY file changes inside your agent directory
+      # Track changes across the complete agent application subdirectory scope
       - 'bq_ai_analytics_agent/**'
       - '.github/workflows/adk-deploy-agent.yml'
 
@@ -29,7 +29,12 @@ jobs:
     - name: Install System Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install google-cloud-aiplatform[reasoningengine] google-cloud-bigquery python-dotenv
+        
+        # FIXED: Forces python to install the exact tool parameters inside your requirements.txt
+        pip install -r bq_ai_analytics_agent/requirements.txt
+        
+        # Enforce extra backup parameters required by the cloud engine initialization framework
+        pip install google-cloud-aiplatform[reasoningengine,adk] google-cloud-bigquery python-dotenv
 
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v2
@@ -45,8 +50,6 @@ jobs:
         GOOGLE_CLOUD_LOCATION: "europe-west1"
         GOOGLE_GENAI_USE_VERTEXAI: "True"
       run: |
-        # Change execution context into your folder so the python engine packs the complete directory space
+        # FIXED: Switches execution context cleanly to map module layers accurately
         cd bq_ai_analytics_agent
-        
-        # Execute your deployment script within its native folder workspace
         python deploy_agent.py
