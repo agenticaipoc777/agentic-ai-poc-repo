@@ -13,10 +13,28 @@ spec:
     spec:
       serviceAccountName: bq-pg-proxy-ksa
       containers:
+        # FIX: name must be exactly "bq-pg-proxy" -- this is what the
+        # pipeline's `kubectl set image deployment/bq-pg-proxy
+        # bq-pg-proxy=...` step targets by name. A prior version of
+        # this file (or a manual kubectl edit) apparently used a
+        # different container name ("proxy-engine"), which is why the
+        # last rollout ended up with TWO containers in one pod instead
+        # of cleanly replacing one -- Kubernetes treated them as
+        # different container specs rather than the same container
+        # being updated.
         - name: bq-pg-proxy
           image: europe-west1-docker.pkg.dev/agentic-ai-502518/bq-pg-proxy-repo/bq-pg-proxy-app:latest
           ports: [{containerPort: 5432}]
+          # REQUIRED on GKE Autopilot -- pods without explicit
+          # resource requests can fail to schedule cleanly. Also
+          # matches what the previously-Running container was
+          # actually granted (500m cpu / 2Gi memory), so this isn't a
+          # downgrade from what was already working.
+          resources:
+            requests: {cpu: "500m", memory: "2Gi"}
+            limits: {cpu: "1", memory: "2Gi"}
           env:
+            - {name: PG_PROXY_LISTEN_HOST, value: "0.0.0.0"}
             - {name: PG_PROXY_PROJECT_ID, value: "agentic-ai-502518"}
             - {name: PG_PROXY_LOCATION, value: "EU"}
             - {name: PG_PROXY_MAX_BYTES_BILLED, value: "3298999002316"}

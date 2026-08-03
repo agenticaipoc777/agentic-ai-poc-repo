@@ -87,6 +87,25 @@ jobs:
         location: ${{ env.REGION }}
         project_id: ${{ env.PROJECT_ID }}
 
+    # ROOT CAUSE FIX: the new pod was permanently stuck in
+    # CreateContainerConfigError ("secret pg-proxy-creds not found")
+    # because the Secret referenced by deployment.yaml's
+    # PG_PROXY_ALLOWED_USERS env var was never actually created in the
+    # cluster -- it can't be committed as plaintext YAML in the repo,
+    # so it has to be created here, in the pipeline, from a GitHub
+    # Secret. --dry-run=client -o yaml | kubectl apply -f - makes this
+    # idempotent: creates it on first run, updates it if the password
+    # in GitHub Secrets ever changes, errors on neither.
+    #
+    # One-time setup required (not in this file, done via GitHub UI):
+    # Settings -> Secrets and variables -> Actions -> New repository
+    # secret, name PG_PROXY_ALLOWED_USERS, value "user:password".
+    - name: Create/Update pg-proxy-creds Secret
+      run: |
+        kubectl create secret generic pg-proxy-creds \
+          --from-literal=allowed_users="${{ secrets.PG_PROXY_ALLOWED_USERS }}" \
+          --dry-run=client -o yaml | kubectl apply -f -
+
     - name: Deploy to GKE
       run: |
         IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
@@ -95,4 +114,10 @@ jobs:
 
     - name: Verify Rollout
       run: |
-        kubectl rollout status deployment/bq-pg-proxy --timeout=180s
+        # Timeout removed per request: waits indefinitely instead of
+        # failing at a fixed limit. Now that the actual blocker (the
+        # missing Secret) is fixed above, this should complete
+        # quickly -- but if a future unrelated issue causes a genuine
+        # hang, this step will need manual cancellation from the
+        # Actions UI rather than failing on its own.
+        kubectl rollout status deployment/bq-pg-proxy
