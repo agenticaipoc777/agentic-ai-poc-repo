@@ -277,9 +277,6 @@ resource "kubernetes_service_v1" "bq_pg_proxy_service" {
   metadata {
     name      = "bq-pg-proxy-service"
     namespace = "default"
-    annotations = {
-      "networking.gke.io/load-balancer-type" = "Internal"
-    }
   }
   spec {
     selector = {
