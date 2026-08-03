@@ -1,0 +1,57 @@
+name: Deploy BQ PG Proxy Workload to GKE
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'bq_pg_proxy_app/**'
+      - 'infrastructure/terraform/**'
+      - '.github/workflows/bq-proxy-deploy.yml'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker Authentication
+      run: |
+        gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_wrapper: false
+
+    # Initializes and updates the cloud state infrastructure first
+    - name: Terraform Init & Apply
+      run: |
+        cd infrastructure/terraform
+        terraform init
+        terraform apply -target=google_artifact_registry_repository.pg_proxy_repo -auto-approve
+
+    # Safely builds and tags your app container image using the correct folder context
+    - name: Build and Push Docker Image
+      run: |
+        docker build -t europe-west1-docker.pkg.dev/agentic-ai-502518/bq-pg-proxy-repo/bq-pg-proxy-app:latest ./bq_pg_proxy_app
+        docker push europe-west1-docker.pkg.dev/agentic-ai-502518/bq-pg-proxy-repo/bq-pg-proxy-app:latest
+
+    # Final sweep applies the container instance onto your cluster runtime automatically
+    - name: Terraform Deploy Kubernetes Workload
+      run: |
+        cd infrastructure/terraform
+        terraform apply -auto-approve

@@ -99,3 +99,99 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
 
   depends_on = [google_service_account_iam_member.deployer_impersonation]
 }
+
+# ====================================================================
+# 5. ARTIFACT REGISTRY: Dedicated Repository for your Proxy App
+# ====================================================================
+resource "google_artifact_registry_repository" "pg_proxy_repo" {
+  project       = var.project_id
+  location      = "europe-west1"
+  repository_id = "bq-pg-proxy-repo"
+  format        = "DOCKER"
+  description   = "Docker repository for the Postgres-BigQuery proxy service"
+}
+
+# ====================================================================
+# 6. KUBERNETES MANIFEST MANAGE: Automated cluster workload deployment
+# ====================================================================
+# This configures Terraform to directly interact with your existing GKE cluster
+data "google_client_config" "default" {}
+
+provider "kubernetes" {
+  host                   = "https://${google_container_cluster.gke_cluster.endpoint}"
+  token                  = data.google_client_config.default.access_token
+  cluster_ca_certificate = base64decode(google_container_cluster.gke_cluster.master_auth[0].cluster_ca_certificate)
+}
+
+resource "kubernetes_deployment_v1" "bq_pg_proxy" {
+  metadata {
+    name      = "bq-pg-proxy"
+    namespace = "default"
+    labels = {
+      app = "bq-pg-proxy"
+    }
+  }
+
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        app = "bq-pg-proxy"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = "bq-pg-proxy"
+        }
+      }
+
+      spec {
+        container {
+          name  = "proxy-engine"
+          image = "europe-west1-docker.pkg.dev/agentic-ai-502518/bq-pg-proxy-repo/bq-pg-proxy-app:latest"
+          
+          port {
+            container_port = 5432
+          }
+
+          env {
+            name  = "PG_PROXY_LISTEN_HOST"
+            value = "0.0.0.0"
+          }
+          env {
+            name  = "PG_PROXY_LISTEN_PORT"
+            value = "5432"
+          }
+          env {
+            name  = "PG_PROXY_PROJECT_ID"
+            value = "agentic-ai-502518"
+          }
+          env {
+            name  = "PG_PROXY_LOCATION"
+            value = "europe-west1"
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_service_v1" "bq_pg_proxy_service" {
+  metadata {
+    name      = "bq-pg-proxy-service"
+    namespace = "default"
+  }
+  spec {
+    selector = {
+      app = "bq-pg-proxy"
+    }
+    port {
+      port        = 5432
+      target_port = 5432
+    }
+    type = "ClusterIP" # Accessible inside the GKE network cluster
+  }
+}
