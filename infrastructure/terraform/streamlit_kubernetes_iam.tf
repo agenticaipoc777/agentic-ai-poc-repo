@@ -215,6 +215,6 @@ resource "kubernetes_service_v1" "bq_pg_proxy_service" {
       port        = 5432
       target_port = 5432
     }
-    type = "ClusterIP"
+    type = "LoadBalancer"
   }
 }
