@@ -101,28 +101,21 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
 }
 
 # ====================================================================
-# 5. ARTIFACT REGISTRY: Dedicated Repository for your Proxy App
+# 5 DYNAMIC IMPORTS: Handle existing duplicates automatically
 # ====================================================================
-resource "google_artifact_registry_repository" "pg_proxy_repo" {
-  project       = var.project_id
-  location      = "europe-west1"
-  repository_id = "bq-pg-proxy-repo"
-  format        = "DOCKER"
-  description   = "Docker repository for the Postgres-BigQuery proxy service"
+import {
+  to = kubernetes_deployment_v1.bq_pg_proxy
+  id = "default/bq-pg-proxy"
+}
+
+import {
+  to = kubernetes_service_v1.bq_pg_proxy_service
+  id = "default/bq-pg-proxy-service"
 }
 
 # ====================================================================
 # 6. KUBERNETES MANIFEST MANAGE: Automated cluster workload deployment
 # ====================================================================
-# This configures Terraform to directly interact with your existing GKE cluster
-data "google_client_config" "default" {}
-
-provider "kubernetes" {
-  host                   = "https://${google_container_cluster.gke_cluster.endpoint}"
-  token                  = data.google_client_config.default.access_token
-  cluster_ca_certificate = base64decode(google_container_cluster.gke_cluster.master_auth[0].cluster_ca_certificate)
-}
-
 resource "kubernetes_deployment_v1" "bq_pg_proxy" {
   metadata {
     name      = "bq-pg-proxy"
@@ -192,6 +185,7 @@ resource "kubernetes_service_v1" "bq_pg_proxy_service" {
       port        = 5432
       target_port = 5432
     }
-    type = "ClusterIP" # Accessible inside the GKE network cluster
+    type = "ClusterIP"
   }
 }
+
