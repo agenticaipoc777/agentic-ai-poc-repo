@@ -37,20 +37,20 @@ jobs:
       with:
         terraform_wrapper: false
 
-    # Initializes and updates the cloud state infrastructure first
-    - name: Terraform Init & Apply
+    # Initializes and targets the repository setup securely
+    - name: Terraform Init & Apply Repo
       run: |
         cd infrastructure/terraform
         terraform init
         terraform apply -target=google_artifact_registry_repository.pg_proxy_repo -auto-approve
 
-    # Safely builds and tags your app container image using the correct folder context
+    # Builds and updates your proxy software artifact image
     - name: Build and Push Docker Image
       run: |
         docker build -t europe-west1-docker.pkg.dev/agentic-ai-502518/bq-pg-proxy-repo/bq-pg-proxy-app:latest ./bq_pg_proxy_app
         docker push europe-west1-docker.pkg.dev/agentic-ai-502518/bq-pg-proxy-repo/bq-pg-proxy-app:latest
 
-    # Final sweep applies the container instance onto your cluster runtime automatically
+    # Final sweep applies Workload Identity and Kubernetes manifests smoothly
     - name: Terraform Deploy Kubernetes Workload
       run: |
         cd infrastructure/terraform

@@ -7,7 +7,6 @@ import {
   id = "projects/agentic-ai-502518/locations/europe-west1/repositories/streamlit-apps"
 }
 
-# Added to resolve the Error 409 repository duplicate conflict
 import {
   to = google_artifact_registry_repository.pg_proxy_repo
   id = "projects/agentic-ai-502518/locations/europe-west1/repositories/bq-pg-proxy-repo"
@@ -39,9 +38,15 @@ import {
   id = "default/bq-pg-proxy-service"
 }
 
+# FIXED: Added to resolve the duplicate service account conflict automatically
+import {
+  to = kubernetes_service_account_v1.proxy_sa
+  id = "default/bq-pg-proxy-sa"
+}
+
 
 # ====================================================================
-# KUBERNETES PROVIDER CONFIGURATION: Configured with list indices
+# KUBERNETES PROVIDER CONFIGURATION
 # ====================================================================
 data "google_client_config" "default" {}
 
@@ -59,7 +64,7 @@ provider "kubernetes" {
 
 
 # ====================================================================
-# 1. VERTEX AI WORKBENCH: Machine learning workspace setup
+# 1. VERTEX AI WORKBENCH
 # ====================================================================
 resource "google_workbench_instance" "adk_predictive_workbench" {
   name     = "adk-predictive-analysis-instance"
@@ -69,7 +74,7 @@ resource "google_workbench_instance" "adk_predictive_workbench" {
 
 
 # ====================================================================
-# 2. ARTIFACT REGISTRY: Shared Docker repository for Streamlit images
+# 2. ARTIFACT REGISTRY
 # ====================================================================
 resource "google_artifact_registry_repository" "app_repo" {
   project       = var.project_id
@@ -89,7 +94,7 @@ resource "google_artifact_registry_repository" "pg_proxy_repo" {
 
 
 # ====================================================================
-# 3. GKE KUBERNETES CLUSTER: Autopilot engine
+# 3. GKE KUBERNETES CLUSTER
 # ====================================================================
 resource "google_container_cluster" "gke_cluster" {
   name             = "adk-analytics-gke-cluster"
@@ -108,7 +113,7 @@ resource "google_container_cluster" "gke_cluster" {
 
 
 # ====================================================================
-# 4. CLOUD RUN SERVICE: Serverless frontend option
+# 4. CLOUD RUN SERVICE
 # ====================================================================
 resource "google_cloud_run_v2_service" "streamlit_service" {
   project  = var.project_id
@@ -138,27 +143,28 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   lifecycle {
     ignore_changes = [ingress]
   }
-
-  depends_on = [google_service_account_iam_member.deployer_impersonation]
 }
 
-# ====================================================================
-# 5. WORKLOAD IDENTITY MAPPING: Bind container to custom Service Account
-# ====================================================================
 
-# 1. Create a native Kubernetes Service Account inside your cluster
+# ====================================================================
+# 5. WORKLOAD IDENTITY MAPPING & MANIFEST MANAGEMENT
+# ====================================================================
 resource "kubernetes_service_account_v1" "proxy_sa" {
   metadata {
     name      = "bq-pg-proxy-sa"
     namespace = "default"
     annotations = {
-      # This critical annotation securely maps the GKE pod to your custom Google IAM Service Account
       "iam.gke.io/gcp-service-account" = "adk-agent-runner@${var.project_id}.iam.gserviceaccount.com"
     }
   }
 }
 
-# 2. Updated deployment template utilizing the dedicated identity configuration
+resource "google_service_account_iam_member" "gke_workload_identity_binding" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/adk-agent-runner@${var.project_id}.iam.gserviceaccount.com"
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[default/bq-pg-proxy-sa]"
+}
+
 resource "kubernetes_deployment_v1" "bq_pg_proxy" {
   metadata {
     name      = "bq-pg-proxy"
@@ -185,8 +191,7 @@ resource "kubernetes_deployment_v1" "bq_pg_proxy" {
       }
 
       spec {
-        # Force the pod to execute using your new identity-bound account structure
-        service_account_name = kubernetes_service_account_v1.proxy_sa.metadata[0].name
+        service_account_name = kubernetes_service_account_v1.proxy_sa.metadata.name
 
         container {
           name  = "proxy-engine"
