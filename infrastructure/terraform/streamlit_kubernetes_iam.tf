@@ -22,6 +22,36 @@ import {
   id = "projects/agentic-ai-502518/locations/europe-west1/services/bq-analytics-frontend"
 }
 
+# Duplicate resolution imports for Kubernetes workloads
+import {
+  to = kubernetes_deployment_v1.bq_pg_proxy
+  id = "default/bq-pg-proxy"
+}
+
+import {
+  to = kubernetes_service_v1.bq_pg_proxy_service
+  id = "default/bq-pg-proxy-service"
+}
+
+
+# ====================================================================
+# KUBERNETES PROVIDER CONFIGURATION: Fixes localhost:80 connection errors
+# ====================================================================
+data "google_client_config" "default" {}
+
+# Dynamically reads details from the cluster to fetch the true endpoint inside the CI/CD pipeline
+data "google_container_cluster" "my_gke" {
+  name     = "adk-analytics-gke-cluster"
+  project  = var.project_id
+  location = var.vertex_compute_region
+}
+
+provider "kubernetes" {
+  host                   = "https://${data.google_container_cluster.my_gke.endpoint}"
+  token                  = data.google_client_config.default.access_token
+  cluster_ca_certificate = base64decode(data.google_container_cluster.my_gke.master_auth.cluster_ca_certificate)
+}
+
 
 # ====================================================================
 # 1. VERTEX AI WORKBENCH: Machine learning workspace setup
@@ -29,12 +59,12 @@ import {
 resource "google_workbench_instance" "adk_predictive_workbench" {
   name     = "adk-predictive-analysis-instance"
   project  = var.project_id
-  location = "${var.vertex_compute_region}-b" # Appends the zone dynamically to your compute region
+  location = "${var.vertex_compute_region}-b" 
 }
 
 
 # ====================================================================
-# 2. ARTIFACT REGISTRY: Shared Docker repository for Streamlit images for docker
+# 2. ARTIFACT REGISTRY: Shared Docker repository for Streamlit images
 # ====================================================================
 resource "google_artifact_registry_repository" "app_repo" {
   project       = var.project_id
@@ -42,6 +72,15 @@ resource "google_artifact_registry_repository" "app_repo" {
   repository_id = "streamlit-apps"
   format        = "DOCKER"
   description   = "Docker repository for Streamlit frontend apps"
+}
+
+# New repository needed for your proxy application image
+resource "google_artifact_registry_repository" "pg_proxy_repo" {
+  project       = var.project_id
+  location      = var.vertex_compute_region
+  repository_id = "bq-pg-proxy-repo"
+  format        = "DOCKER"
+  description   = "Docker repository for the Postgres-BigQuery proxy service"
 }
 
 
@@ -74,7 +113,6 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   ingress  = "INGRESS_TRAFFIC_ALL"
 
   template {
-    # Uses your explicit requested service account email address with variable interpolation
     service_account = "adk-agent-runner@${var.project_id}.iam.gserviceaccount.com"
 
     containers {
@@ -100,21 +138,9 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   depends_on = [google_service_account_iam_member.deployer_impersonation]
 }
 
-# ====================================================================
-# 5 DYNAMIC IMPORTS: Handle existing duplicates automatically
-# ====================================================================
-import {
-  to = kubernetes_deployment_v1.bq_pg_proxy
-  id = "default/bq-pg-proxy"
-}
-
-import {
-  to = kubernetes_service_v1.bq_pg_proxy_service
-  id = "default/bq-pg-proxy-service"
-}
 
 # ====================================================================
-# 6. KUBERNETES MANIFEST MANAGE: Automated cluster workload deployment
+# 5. KUBERNETES MANIFESTS: Automated proxy cluster workload deployment
 # ====================================================================
 resource "kubernetes_deployment_v1" "bq_pg_proxy" {
   metadata {
@@ -144,7 +170,7 @@ resource "kubernetes_deployment_v1" "bq_pg_proxy" {
       spec {
         container {
           name  = "proxy-engine"
-          image = "europe-west1-docker.pkg.dev/agentic-ai-502518/bq-pg-proxy-repo/bq-pg-proxy-app:latest"
+          image = "${var.vertex_compute_region}-docker.pkg.dev/${var.project_id}/bq-pg-proxy-repo/bq-pg-proxy-app:latest"
           
           port {
             container_port = 5432
@@ -160,11 +186,11 @@ resource "kubernetes_deployment_v1" "bq_pg_proxy" {
           }
           env {
             name  = "PG_PROXY_PROJECT_ID"
-            value = "agentic-ai-502518"
+            value = var.project_id
           }
           env {
             name  = "PG_PROXY_LOCATION"
-            value = "europe-west1"
+            value = var.vertex_compute_region
           }
         }
       }
@@ -188,4 +214,3 @@ resource "kubernetes_service_v1" "bq_pg_proxy_service" {
     type = "ClusterIP"
   }
 }
-
