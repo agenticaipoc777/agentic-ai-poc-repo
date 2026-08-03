@@ -38,7 +38,6 @@ import {
   id = "default/bq-pg-proxy-service"
 }
 
-# FIXED: Added to resolve the duplicate service account conflict automatically
 import {
   to = kubernetes_service_account_v1.proxy_sa
   id = "default/bq-pg-proxy-sa"
@@ -191,7 +190,8 @@ resource "kubernetes_deployment_v1" "bq_pg_proxy" {
       }
 
       spec {
-        service_account_name = kubernetes_service_account_v1.proxy_sa.metadata.name
+        # FIXED: Corrected block type list index mapping parameter
+        service_account_name = kubernetes_service_account_v1.proxy_sa.metadata[0].name
 
         container {
           name  = "proxy-engine"
