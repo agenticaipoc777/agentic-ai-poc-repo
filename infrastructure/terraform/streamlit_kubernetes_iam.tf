@@ -35,11 +35,10 @@ import {
 
 
 # ====================================================================
-# KUBERNETES PROVIDER CONFIGURATION: Fixes localhost:80 connection errors
+# KUBERNETES PROVIDER CONFIGURATION: Configured with list indices [0]
 # ====================================================================
 data "google_client_config" "default" {}
 
-# Dynamically reads details from the cluster to fetch the true endpoint inside the CI/CD pipeline
 data "google_container_cluster" "my_gke" {
   name     = "adk-analytics-gke-cluster"
   project  = var.project_id
@@ -49,7 +48,8 @@ data "google_container_cluster" "my_gke" {
 provider "kubernetes" {
   host                   = "https://${data.google_container_cluster.my_gke.endpoint}"
   token                  = data.google_client_config.default.access_token
-  cluster_ca_certificate = base64decode(data.google_container_cluster.my_gke.master_auth.cluster_ca_certificate)
+  # Fixed using index reference [0] for the master_auth list attribute
+  cluster_ca_certificate = base64decode(data.google_container_cluster.my_gke.master_auth[0].cluster_ca_certificate)
 }
 
 
@@ -74,7 +74,6 @@ resource "google_artifact_registry_repository" "app_repo" {
   description   = "Docker repository for Streamlit frontend apps"
 }
 
-# New repository needed for your proxy application image
 resource "google_artifact_registry_repository" "pg_proxy_repo" {
   project       = var.project_id
   location      = var.vertex_compute_region
