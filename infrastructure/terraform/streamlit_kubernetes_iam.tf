@@ -142,10 +142,23 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
   depends_on = [google_service_account_iam_member.deployer_impersonation]
 }
 
+# ====================================================================
+# 5. WORKLOAD IDENTITY MAPPING: Bind container to custom Service Account
+# ====================================================================
 
-# ====================================================================
-# 5. KUBERNETES MANIFESTS: Automated proxy cluster workload deployment
-# ====================================================================
+# 1. Create a native Kubernetes Service Account inside your cluster
+resource "kubernetes_service_account_v1" "proxy_sa" {
+  metadata {
+    name      = "bq-pg-proxy-sa"
+    namespace = "default"
+    annotations = {
+      # This critical annotation securely maps the GKE pod to your custom Google IAM Service Account
+      "iam.gke.io/gcp-service-account" = "adk-agent-runner@${var.project_id}.iam.gserviceaccount.com"
+    }
+  }
+}
+
+# 2. Updated deployment template utilizing the dedicated identity configuration
 resource "kubernetes_deployment_v1" "bq_pg_proxy" {
   metadata {
     name      = "bq-pg-proxy"
@@ -172,6 +185,9 @@ resource "kubernetes_deployment_v1" "bq_pg_proxy" {
       }
 
       spec {
+        # Force the pod to execute using your new identity-bound account structure
+        service_account_name = kubernetes_service_account_v1.proxy_sa.metadata[0].name
+
         container {
           name  = "proxy-engine"
           image = "${var.vertex_compute_region}-docker.pkg.dev/${var.project_id}/bq-pg-proxy-repo/bq-pg-proxy-app:latest"
