@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bq-pg-proxy
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: bq-pg-proxy}
+  template:
+    metadata:
+      labels: {app: bq-pg-proxy}
+    spec:
+      serviceAccountName: bq-pg-proxy-ksa
+      containers:
+        - name: bq-pg-proxy
+          image: europe-west1-docker.pkg.dev/agentic-ai-502518/bq-pg-proxy-repo/bq-pg-proxy-app:latest
+          ports: [{containerPort: 5432}]
+          env:
+            - {name: PG_PROXY_PROJECT_ID, value: "agentic-ai-502518"}
+            - {name: PG_PROXY_LOCATION, value: "EU"}
+            - {name: PG_PROXY_MAX_BYTES_BILLED, value: "3298999002316"}
+            - {name: PG_PROXY_MAX_RESULT_ROWS, value: "2000000"}
+            - name: PG_PROXY_ALLOWED_USERS
+              valueFrom:
+                secretKeyRef: {name: pg-proxy-creds, key: allowed_users}
+          readinessProbe: {tcpSocket: {port: 5432}, initialDelaySeconds: 5}
+          livenessProbe: {tcpSocket: {port: 5432}, initialDelaySeconds: 15}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bq-pg-proxy
+  namespace: default
+  annotations:
+    networking.gke.io/load-balancer-type: "Internal"
+spec:
+  type: LoadBalancer
+  selector: {app: bq-pg-proxy}
+  ports: [{port: 5432, targetPort: 5432}]

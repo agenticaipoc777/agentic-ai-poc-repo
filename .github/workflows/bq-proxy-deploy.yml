@@ -1,51 +1,98 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: bq-pg-proxy
-  namespace: default
-spec:
-  replicas: 1
-  selector:
-    matchLabels: {app: bq-pg-proxy}
-  template:
-    metadata:
-      labels: {app: bq-pg-proxy}
-    spec:
-      serviceAccountName: bq-pg-proxy-ksa
-      containers:
-        - name: bq-pg-proxy
-          image: europe-west1-docker.pkg.dev/agentic-ai-502518/bq-pg-proxy-repo/bq-pg-proxy-app:latest
-          ports: [{containerPort: 5432}]
-          env:
-            - {name: PG_PROXY_PROJECT_ID, value: "agentic-ai-502518"}
-            # FIX: analytics_v3 (and the other datasets under this
-            # project) live in the "EU" multi-region, confirmed via
-            # the dataset's Details panel in the BigQuery console.
-            # This was previously set to "europe-west1" -- a
-            # different, regional (not multi-region) location.
-            # BigQuery requires the query job's location to exactly
-            # match the dataset's location; a mismatch fails every
-            # query with "Dataset ... was not found in location ...".
-            # If datasets are ever added outside "EU", a single fixed
-            # location here won't cover all of them -- see the
-            # per-dataset-location note from earlier in this thread.
-            - {name: PG_PROXY_LOCATION, value: "EU"}
-            - {name: PG_PROXY_MAX_BYTES_BILLED, value: "3298999002316"}
-            - {name: PG_PROXY_MAX_RESULT_ROWS, value: "2000000"}
-            - name: PG_PROXY_ALLOWED_USERS
-              valueFrom:
-                secretKeyRef: {name: pg-proxy-creds, key: allowed_users}
-          readinessProbe: {tcpSocket: {port: 5432}, initialDelaySeconds: 5}
-          livenessProbe: {tcpSocket: {port: 5432}, initialDelaySeconds: 15}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: bq-pg-proxy
-  namespace: default
-  annotations:
-    networking.gke.io/load-balancer-type: "Internal"
-spec:
-  type: LoadBalancer
-  selector: {app: bq-pg-proxy}
-  ports: [{port: 5432, targetPort: 5432}]
+name: Deploy BQ PG Proxy Workload to GKE
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'bq_pg_proxy_app/**'
+      - 'infrastructure/terraform/bq_pg_proxy.tf'
+      - '.github/workflows/bq-proxy-deploy.yml'
+
+env:
+  PROJECT_ID: agentic-ai-502518
+  REGION: europe-west1
+  CLUSTER_NAME: adk-analytics-gke-cluster
+  REPO_NAME: bq-pg-proxy-repo
+  IMAGE_NAME: bq-pg-proxy-app
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker Authentication
+      run: |
+        gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_wrapper: false
+
+    - name: Terraform Init
+      working-directory: infrastructure/terraform
+      run: terraform init
+
+    - name: Terraform Format Check
+      working-directory: infrastructure/terraform
+      run: terraform fmt -check -recursive
+      continue-on-error: true
+
+    - name: Terraform Validate
+      working-directory: infrastructure/terraform
+      run: terraform validate
+
+    - name: Terraform Plan (bq-pg-proxy scoped resources)
+      working-directory: infrastructure/terraform
+      run: |
+        terraform plan \
+          -target=google_artifact_registry_repository.pg_proxy_repo \
+          -target=google_service_account.bq_pg_proxy_sa \
+          -target=google_project_iam_member.bq_pg_proxy_bq_access \
+          -target=google_project_iam_member.bq_pg_proxy_job_user \
+          -target=google_service_account_iam_member.bq_pg_proxy_workload_identity \
+          -out=bq-pg-proxy.tfplan
+
+    - name: Terraform Apply (bq-pg-proxy scoped resources)
+      working-directory: infrastructure/terraform
+      run: terraform apply -auto-approve bq-pg-proxy.tfplan
+
+    - name: Build and Push Docker Image
+      run: |
+        IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}"
+        docker build -t "$IMAGE:${{ env.IMAGE_TAG }}" -t "$IMAGE:latest" ./bq_pg_proxy_app
+        docker push "$IMAGE:${{ env.IMAGE_TAG }}"
+        docker push "$IMAGE:latest"
+
+    - name: Get GKE Credentials
+      uses: google-github-actions/get-gke-credentials@v2
+      with:
+        cluster_name: ${{ env.CLUSTER_NAME }}
+        location: ${{ env.REGION }}
+        project_id: ${{ env.PROJECT_ID }}
+
+    - name: Deploy to GKE
+      run: |
+        IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+        kubectl apply -f bq_pg_proxy_app/k8s/deployment.yaml
+        kubectl set image deployment/bq-pg-proxy bq-pg-proxy="$IMAGE"
+
+    - name: Verify Rollout
+      run: |
+        kubectl rollout status deployment/bq-pg-proxy --timeout=180s
