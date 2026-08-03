@@ -87,29 +87,22 @@ jobs:
         location: ${{ env.REGION }}
         project_id: ${{ env.PROJECT_ID }}
 
-    # ROOT CAUSE FIX: the new pod was permanently stuck in
-    # CreateContainerConfigError ("secret pg-proxy-creds not found")
-    # because the Secret referenced by deployment.yaml's
-    # PG_PROXY_ALLOWED_USERS env var was never actually created in the
-    # cluster -- it can't be committed as plaintext YAML in the repo,
-    # so it has to be created here, in the pipeline, from a GitHub
-    # Secret. --dry-run=client -o yaml | kubectl apply -f - makes this
-    # idempotent: creates it on first run, updates it if the password
-    # in GitHub Secrets ever changes, errors on neither.
+    # TEMPORARY: Secret-creation step removed while
+    # PG_PROXY_ALLOWED_USERS is hardcoded directly in
+    # deployment.yaml for quick testing (per explicit request).
+    # When switching back to the secretKeyRef version in
+    # deployment.yaml, restore this step:
     #
-    # One-time setup required (not in this file, done via GitHub UI):
-    # Settings -> Secrets and variables -> Actions -> New repository
-    # secret, name PG_PROXY_ALLOWED_USERS, value "user:password".
-    - name: Create/Update pg-proxy-creds Secret
-      run: |
-        kubectl create secret generic pg-proxy-creds \
-          --from-literal=allowed_users="${{ secrets.PG_PROXY_ALLOWED_USERS }}" \
-          --dry-run=client -o yaml | kubectl apply -f -
+    # - name: Create/Update pg-proxy-creds Secret
+    #   run: |
+    #     kubectl create secret generic pg-proxy-creds \
+    #       --from-literal=allowed_users="${{ secrets.PG_PROXY_ALLOWED_USERS }}" \
+    #       --dry-run=client -o yaml | kubectl apply -f -
 
     - name: Deploy to GKE
       run: |
         IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
-        kubectl apply -f bq_pg_proxy_app/k8s/deployment.yaml
+        kubectl replace --force -f bq_pg_proxy_app/k8s/deployment.yaml
         kubectl set image deployment/bq-pg-proxy bq-pg-proxy="$IMAGE"
 
     - name: Verify Rollout

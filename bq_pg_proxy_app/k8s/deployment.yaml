@@ -39,9 +39,18 @@ spec:
             - {name: PG_PROXY_LOCATION, value: "EU"}
             - {name: PG_PROXY_MAX_BYTES_BILLED, value: "3298999002316"}
             - {name: PG_PROXY_MAX_RESULT_ROWS, value: "2000000"}
-            - name: PG_PROXY_ALLOWED_USERS
-              valueFrom:
-                secretKeyRef: {name: pg-proxy-creds, key: allowed_users}
+            # TEMPORARY, FOR TESTING ONLY: hardcoded per explicit
+            # request to unblock local testing quickly. This value is
+            # now in plaintext in this file and in Git history. Before
+            # this goes beyond your own testing, swap back to the
+            # secretKeyRef version below (commented out) with a real
+            # credential set in GitHub Secrets -> PG_PROXY_ALLOWED_USERS,
+            # and treat this commit as one to revert/rewrite, not just
+            # build on top of.
+            - {name: PG_PROXY_ALLOWED_USERS, value: "root:pass123"}
+            # - name: PG_PROXY_ALLOWED_USERS
+            #   valueFrom:
+            #     secretKeyRef: {name: pg-proxy-creds, key: allowed_users}
           readinessProbe: {tcpSocket: {port: 5432}, initialDelaySeconds: 5}
           livenessProbe: {tcpSocket: {port: 5432}, initialDelaySeconds: 15}
 ---
