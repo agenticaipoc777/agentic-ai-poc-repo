@@ -6,8 +6,22 @@ on:
       - main
     paths:
       - 'bq_pg_proxy_app/**'
-      - 'infrastructure/terraform/**'
+      - 'infrastructure/terraform/bq_pg_proxy.tf'
       - '.github/workflows/bq-proxy-deploy.yml'
+
+env:
+  PROJECT_ID: agentic-ai-502518
+  REGION: europe-west1
+  CLUSTER_NAME: adk-analytics-gke-cluster
+  REPO_NAME: bq-pg-proxy-repo
+  IMAGE_NAME: bq-pg-proxy-app
+  # Unique tag per commit -- REQUIRED so Kubernetes actually detects a
+  # new image and rolls the pod. Reusing `:latest` for every build
+  # means the image *reference* never changes, so a plain
+  # `kubectl apply` sees no diff and does nothing -- the cluster keeps
+  # running whatever was deployed last, silently, even though the
+  # pipeline reports success.
+  IMAGE_TAG: ${{ github.sha }}
 
 jobs:
   build-and-deploy:
@@ -24,34 +38,87 @@ jobs:
       uses: google-github-actions/auth@v2
       with:
         credentials_json: ${{ secrets.GCP_SA_KEY }}
+        # RECOMMENDATION (not applied here since it needs a Workload
+        # Identity Federation pool set up first): prefer keyless OIDC
+        # auth over a long-lived JSON key secret. If/when you set up
+        # WIF, replace credentials_json above with:
+        #   workload_identity_provider: 'projects/.../locations/global/workloadIdentityPools/.../providers/...'
+        #   service_account: 'deployer@agentic-ai-502518.iam.gserviceaccount.com'
 
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
 
     - name: Configure Docker Authentication
       run: |
-        gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+        gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
         terraform_wrapper: false
 
-    # Initializes and targets the repository setup securely
-    - name: Terraform Init & Apply Repo
-      run: |
-        cd infrastructure/terraform
-        terraform init
-        terraform apply -target=google_artifact_registry_repository.pg_proxy_repo -auto-approve
+    - name: Terraform Init
+      working-directory: infrastructure/terraform
+      run: terraform init
 
-    # Builds and updates your proxy software artifact image
+    - name: Terraform Format Check
+      working-directory: infrastructure/terraform
+      run: terraform fmt -check -recursive
+      continue-on-error: true  # warn, don't block deploy on formatting alone
+
+    - name: Terraform Validate
+      working-directory: infrastructure/terraform
+      run: terraform validate
+
+    # Scoped to exactly the resources this workflow owns -- the
+    # Artifact Registry repo and the bq-pg-proxy service account/IAM
+    # bindings. Deliberately NOT a blanket `terraform apply` against
+    # the whole root module: this state file also manages the live
+    # GKE cluster, the Workbench instance, and the Streamlit Cloud Run
+    # service. An unscoped apply triggered by an unrelated Terraform
+    # edit elsewhere in the repo (this workflow triggers on ANY change
+    # under infrastructure/terraform/) would apply changes to those
+    # too, with no plan review visible in this pipeline. If you add
+    # more bq-pg-proxy-specific resources later, add their addresses
+    # to the -target list below rather than dropping -target entirely.
+    - name: Terraform Plan (bq-pg-proxy scoped resources)
+      working-directory: infrastructure/terraform
+      run: |
+        terraform plan \
+          -target=google_artifact_registry_repository.pg_proxy_repo \
+          -target=google_service_account.bq_pg_proxy_sa \
+          -target=google_project_iam_member.bq_pg_proxy_bq_access \
+          -target=google_project_iam_member.bq_pg_proxy_job_user \
+          -target=google_service_account_iam_member.bq_pg_proxy_workload_identity \
+          -out=bq-pg-proxy.tfplan
+
+    - name: Terraform Apply (bq-pg-proxy scoped resources)
+      working-directory: infrastructure/terraform
+      run: terraform apply -auto-approve bq-pg-proxy.tfplan
+
     - name: Build and Push Docker Image
       run: |
-        docker build -t europe-west1-docker.pkg.dev/agentic-ai-502518/bq-pg-proxy-repo/bq-pg-proxy-app:latest ./bq_pg_proxy_app
-        docker push europe-west1-docker.pkg.dev/agentic-ai-502518/bq-pg-proxy-repo/bq-pg-proxy-app:latest
+        IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}"
+        docker build -t "$IMAGE:${{ env.IMAGE_TAG }}" -t "$IMAGE:latest" ./bq_pg_proxy_app
+        docker push "$IMAGE:${{ env.IMAGE_TAG }}"
+        docker push "$IMAGE:latest"
 
-    # Final sweep applies Workload Identity and Kubernetes manifests smoothly
-    - name: Terraform Deploy Kubernetes Workload
+    - name: Get GKE Credentials
+      uses: google-github-actions/get-gke-credentials@v2
+      with:
+        cluster_name: ${{ env.CLUSTER_NAME }}
+        location: ${{ env.REGION }}
+        project_id: ${{ env.PROJECT_ID }}
+
+    - name: Deploy to GKE
       run: |
-        cd infrastructure/terraform
-        terraform apply -auto-approve
+        IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+        kubectl apply -f bq_pg_proxy_app/k8s/deployment.yaml
+        kubectl set image deployment/bq-pg-proxy bq-pg-proxy="$IMAGE"
+
+    - name: Verify Rollout
+      run: |
+        # Fails the pipeline (instead of reporting a false "success")
+        # if the new pod doesn't reach Ready within the timeout --
+        # e.g. a broken image, a missing secret, or a crash loop.
+        kubectl rollout status deployment/bq-pg-proxy --timeout=180s
