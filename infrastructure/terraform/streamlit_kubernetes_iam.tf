@@ -7,6 +7,12 @@ import {
   id = "projects/agentic-ai-502518/locations/europe-west1/repositories/streamlit-apps"
 }
 
+# Added to resolve the Error 409 repository duplicate conflict
+import {
+  to = google_artifact_registry_repository.pg_proxy_repo
+  id = "projects/agentic-ai-502518/locations/europe-west1/repositories/bq-pg-proxy-repo"
+}
+
 import {
   to = google_workbench_instance.adk_predictive_workbench
   id = "projects/agentic-ai-502518/locations/europe-west1-b/instances/adk-predictive-analysis-instance"
@@ -35,7 +41,7 @@ import {
 
 
 # ====================================================================
-# KUBERNETES PROVIDER CONFIGURATION: Configured with list indices [0]
+# KUBERNETES PROVIDER CONFIGURATION: Configured with list indices
 # ====================================================================
 data "google_client_config" "default" {}
 
@@ -48,7 +54,6 @@ data "google_container_cluster" "my_gke" {
 provider "kubernetes" {
   host                   = "https://${data.google_container_cluster.my_gke.endpoint}"
   token                  = data.google_client_config.default.access_token
-  # Fixed using index reference [0] for the master_auth list attribute
   cluster_ca_certificate = base64decode(data.google_container_cluster.my_gke.master_auth[0].cluster_ca_certificate)
 }
 
