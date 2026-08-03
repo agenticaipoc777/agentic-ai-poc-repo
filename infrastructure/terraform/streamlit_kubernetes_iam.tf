@@ -27,7 +27,6 @@ import {
   id = "projects/agentic-ai-502518/locations/europe-west1/services/bq-analytics-frontend"
 }
 
-# Duplicate resolution imports for Kubernetes workloads
 import {
   to = kubernetes_deployment_v1.bq_pg_proxy
   id = "default/bq-pg-proxy"
@@ -68,7 +67,7 @@ provider "kubernetes" {
 resource "google_workbench_instance" "adk_predictive_workbench" {
   name     = "adk-predictive-analysis-instance"
   project  = var.project_id
-  location = "${var.vertex_compute_region}-b" 
+  location = "${var.vertex_compute_region}-b"
 }
 
 
@@ -148,6 +147,14 @@ resource "google_cloud_run_v2_service" "streamlit_service" {
 # ====================================================================
 # 5. WORKLOAD IDENTITY MAPPING & MANIFEST MANAGEMENT
 # ====================================================================
+
+# FIX: adk-agent-runner is the real, already-existing GCP service
+# account this whole setup was built around (also used by the
+# Streamlit Cloud Run service above). A SEPARATE "bq-pg-proxy-sa@..."
+# GCP service account was mistakenly introduced later in a different
+# Terraform file and never actually created -- that phantom identity
+# is what caused every BigQuery call to fail with "Gaia id not found".
+# There is only ever ONE GCP identity behind this KSA: adk-agent-runner.
 resource "kubernetes_service_account_v1" "proxy_sa" {
   metadata {
     name      = "bq-pg-proxy-sa"
@@ -160,9 +167,13 @@ resource "kubernetes_service_account_v1" "proxy_sa" {
 
 resource "google_service_account_iam_member" "gke_workload_identity_binding" {
   service_account_id = "projects/${var.project_id}/serviceAccounts/adk-agent-runner@${var.project_id}.iam.gserviceaccount.com"
-  role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:${var.project_id}.svc.id.goog[default/bq-pg-proxy-sa]"
+  role                = "roles/iam.workloadIdentityUser"
+  member              = "serviceAccount:${var.project_id}.svc.id.goog[default/bq-pg-proxy-sa]"
 }
+
+# NOTE: adk-agent-runner already has BigQuery Data Viewer and
+# BigQuery Job User granted (confirmed via IAM console), so no
+# additional google_project_iam_member resources are needed here.
 
 resource "kubernetes_deployment_v1" "bq_pg_proxy" {
   metadata {
@@ -190,15 +201,31 @@ resource "kubernetes_deployment_v1" "bq_pg_proxy" {
       }
 
       spec {
-        # FIXED: Corrected block type list index mapping parameter
         service_account_name = kubernetes_service_account_v1.proxy_sa.metadata[0].name
 
         container {
-          name  = "proxy-engine"
-          image = "${var.vertex_compute_region}-docker.pkg.dev/${var.project_id}/bq-pg-proxy-repo/bq-pg-proxy-app:latest"
-          
+          # FIX: renamed from "proxy-engine" to "bq-pg-proxy" so this
+          # matches the CI/CD pipeline's `kubectl set image
+          # deployment/bq-pg-proxy bq-pg-proxy=...` targeting, and so
+          # there's exactly one consistent container name across every
+          # place this Deployment is referenced.
+          name  = "bq-pg-proxy"
+          image = "${var.vertex_compute_region}-docker.pkg.dev/${var.project_id}/bq-pg-proxy-repo/bq-pg-proxy-app:${var.pg_proxy_image_tag}"
+
           port {
             container_port = 5432
+          }
+
+          # ADDED: required on GKE Autopilot for reliable scheduling.
+          resources {
+            requests = {
+              cpu    = "500m"
+              memory = "2Gi"
+            }
+            limits = {
+              cpu    = "1"
+              memory = "2Gi"
+            }
           }
 
           env {
@@ -213,9 +240,32 @@ resource "kubernetes_deployment_v1" "bq_pg_proxy" {
             name  = "PG_PROXY_PROJECT_ID"
             value = var.project_id
           }
+          # FIX: this was var.vertex_compute_region ("europe-west1"),
+          # which is a GKE/compute region, not where the BigQuery
+          # datasets actually live. analytics_v3 (and the others under
+          # this project) are in the "EU" multi-region -- confirmed
+          # via the dataset's Details panel in the BigQuery console.
+          # BigQuery requires the query job's location to exactly
+          # match the dataset's location.
           env {
             name  = "PG_PROXY_LOCATION"
-            value = var.vertex_compute_region
+            value = "EU"
+          }
+          env {
+            name  = "PG_PROXY_MAX_BYTES_BILLED"
+            value = "3298999002316"
+          }
+          env {
+            name  = "PG_PROXY_MAX_RESULT_ROWS"
+            value = "2000000"
+          }
+          # TEMPORARY, FOR TESTING ONLY, per explicit request: plain
+          # literal credentials instead of a Kubernetes Secret. Swap
+          # to a secret_key_ref block (reading from a real Secret)
+          # before this is anything more than local testing.
+          env {
+            name  = "PG_PROXY_ALLOWED_USERS"
+            value = "root:pass123"
           }
         }
       }
@@ -227,6 +277,9 @@ resource "kubernetes_service_v1" "bq_pg_proxy_service" {
   metadata {
     name      = "bq-pg-proxy-service"
     namespace = "default"
+    annotations = {
+      "networking.gke.io/load-balancer-type" = "Internal"
+    }
   }
   spec {
     selector = {

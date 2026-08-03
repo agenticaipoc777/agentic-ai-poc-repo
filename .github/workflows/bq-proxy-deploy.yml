@@ -6,13 +6,13 @@ on:
       - main
     paths:
       - 'bq_pg_proxy_app/**'
-      - 'infrastructure/terraform/bq_pg_proxy.tf'
+      - 'infrastructure/terraform/streamlit_kubernetes_iam.tf'
+      - 'infrastructure/terraform/pg_proxy_variable.tf'
       - '.github/workflows/bq-proxy-deploy.yml'
 
 env:
   PROJECT_ID: agentic-ai-502518
   REGION: europe-west1
-  CLUSTER_NAME: adk-analytics-gke-cluster
   REPO_NAME: bq-pg-proxy-repo
   IMAGE_NAME: bq-pg-proxy-app
   IMAGE_TAG: ${{ github.sha }}
@@ -40,6 +40,18 @@ jobs:
       run: |
         gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
+    # Build/push happens BEFORE Terraform apply now. The Deployment's
+    # container image is templated as
+    # "...bq-pg-proxy-app:${var.pg_proxy_image_tag}" -- if Terraform
+    # applied first, it would reference a tag that doesn't exist in
+    # Artifact Registry yet, and the pod would fail to pull the image.
+    - name: Build and Push Docker Image
+      run: |
+        IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}"
+        docker build -t "$IMAGE:${{ env.IMAGE_TAG }}" -t "$IMAGE:latest" ./bq_pg_proxy_app
+        docker push "$IMAGE:${{ env.IMAGE_TAG }}"
+        docker push "$IMAGE:latest"
+
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
@@ -58,59 +70,31 @@ jobs:
       working-directory: infrastructure/terraform
       run: terraform validate
 
-    - name: Terraform Plan (bq-pg-proxy scoped resources)
+    # CONSOLIDATED: previously two separate plan/apply pairs existed
+    # -- one for a "bq_pg_proxy.tf" GCP service account that was
+    # never actually correct (it referenced a phantom
+    # "bq-pg-proxy-sa@..." GCP identity that was never created,
+    # causing every BigQuery call to fail auth), and a second,
+    # kubectl-based deploy that fought with Terraform's own
+    # kubernetes provider for control of the same Deployment object
+    # -- which is what caused the container to keep reverting to a
+    # stale "proxy-engine" definition. That file has been deleted.
+    # Terraform (via the kubernetes provider already configured in
+    # streamlit_kubernetes_iam.tf) is now the ONLY thing that manages
+    # the bq-pg-proxy Deployment/Service/ServiceAccount -- kubectl is
+    # no longer used anywhere in this pipeline.
+    - name: Terraform Plan
       working-directory: infrastructure/terraform
       run: |
         terraform plan \
           -target=google_artifact_registry_repository.pg_proxy_repo \
-          -target=google_service_account.bq_pg_proxy_sa \
-          -target=google_project_iam_member.bq_pg_proxy_bq_access \
-          -target=google_project_iam_member.bq_pg_proxy_job_user \
-          -target=google_service_account_iam_member.bq_pg_proxy_workload_identity \
+          -target=kubernetes_service_account_v1.proxy_sa \
+          -target=google_service_account_iam_member.gke_workload_identity_binding \
+          -target=kubernetes_deployment_v1.bq_pg_proxy \
+          -target=kubernetes_service_v1.bq_pg_proxy_service \
+          -var="pg_proxy_image_tag=${{ env.IMAGE_TAG }}" \
           -out=bq-pg-proxy.tfplan
 
-    - name: Terraform Apply (bq-pg-proxy scoped resources)
+    - name: Terraform Apply
       working-directory: infrastructure/terraform
       run: terraform apply -auto-approve bq-pg-proxy.tfplan
-
-    - name: Build and Push Docker Image
-      run: |
-        IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}"
-        docker build -t "$IMAGE:${{ env.IMAGE_TAG }}" -t "$IMAGE:latest" ./bq_pg_proxy_app
-        docker push "$IMAGE:${{ env.IMAGE_TAG }}"
-        docker push "$IMAGE:latest"
-
-    - name: Get GKE Credentials
-      uses: google-github-actions/get-gke-credentials@v2
-      with:
-        cluster_name: ${{ env.CLUSTER_NAME }}
-        location: ${{ env.REGION }}
-        project_id: ${{ env.PROJECT_ID }}
-
-    # TEMPORARY: Secret-creation step removed while
-    # PG_PROXY_ALLOWED_USERS is hardcoded directly in
-    # deployment.yaml for quick testing (per explicit request).
-    # When switching back to the secretKeyRef version in
-    # deployment.yaml, restore this step:
-    #
-    # - name: Create/Update pg-proxy-creds Secret
-    #   run: |
-    #     kubectl create secret generic pg-proxy-creds \
-    #       --from-literal=allowed_users="${{ secrets.PG_PROXY_ALLOWED_USERS }}" \
-    #       --dry-run=client -o yaml | kubectl apply -f -
-
-    - name: Deploy to GKE
-      run: |
-        IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
-        kubectl replace --force -f bq_pg_proxy_app/k8s/deployment.yaml
-        kubectl set image deployment/bq-pg-proxy bq-pg-proxy="$IMAGE"
-
-    - name: Verify Rollout
-      run: |
-        # Timeout removed per request: waits indefinitely instead of
-        # failing at a fixed limit. Now that the actual blocker (the
-        # missing Secret) is fixed above, this should complete
-        # quickly -- but if a future unrelated issue causes a genuine
-        # hang, this step will need manual cancellation from the
-        # Actions UI rather than failing on its own.
-        kubectl rollout status deployment/bq-pg-proxy

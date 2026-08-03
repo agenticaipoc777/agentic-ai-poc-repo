@@ -15,4 +15,3 @@ variable "vertex_compute_region" {
   default     = "europe-west1"
   description = "The target regional physical engine endpoint for Vertex AI runtimes"
 }
-
