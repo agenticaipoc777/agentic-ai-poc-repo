@@ -62,6 +62,15 @@ def load_model():
 tokenizer, model = load_model()
 device = next(model.parameters()).device
 
+# Explicit startup diagnostic -- shows up in Cloud Run logs immediately,
+# so a GPU-not-detected problem (the most likely cause of "works on
+# CPU locally, silently fails on the GPU deployment") is visible
+# without needing to reproduce and guess.
+print(f"[STARTUP] torch.cuda.is_available() = {torch.cuda.is_available()}")
+print(f"[STARTUP] Model loaded on device: {device}")
+if torch.cuda.is_available():
+    print(f"[STARTUP] GPU: {torch.cuda.get_device_name(0)}")
+
 # ==============================================================================
 # TOOLS (unchanged from the original script)
 # ==============================================================================
@@ -103,9 +112,15 @@ CRITICAL: Never try to use the calculate_square_foot tool for general questions.
 def generate_streaming(messages: list, placeholder):
     """
     Streams tokens into the given Streamlit placeholder as they're
-    generated, instead of blocking until the full response is done --
-    a 7B model on a single GPU is not instant, and a live-updating
-    response is a meaningfully better experience than a frozen UI.
+    generated, instead of blocking until the full response is done.
+
+    FIX: model.generate() runs in a background thread so tokens can
+    stream out as they're produced -- but if it raises an exception
+    (CUDA error, OOM, etc.), a bare threading.Thread swallows that
+    silently: the main thread just sees an empty stream and returns
+    blank with no error at all. This wraps the thread target to
+    capture any exception and re-raise it here, in the main thread,
+    where Streamlit can actually display it.
     """
     prompt = tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
@@ -121,15 +136,31 @@ def generate_streaming(messages: list, placeholder):
         max_new_tokens=256,
         do_sample=False,
     )
-    thread = threading.Thread(target=model.generate, kwargs=generation_kwargs)
+
+    thread_exception = {}
+
+    def _generate():
+        try:
+            model.generate(**generation_kwargs)
+        except Exception as e:
+            thread_exception["error"] = e
+
+    thread = threading.Thread(target=_generate)
     thread.start()
 
     full_text = ""
     for token_text in streamer:
         full_text += token_text
         placeholder.markdown(full_text + "▌")
-    placeholder.markdown(full_text)
+
     thread.join()
+
+    if "error" in thread_exception:
+        # Re-raised in the MAIN thread now, so it actually reaches
+        # Streamlit's error display and your logs -- not silently lost.
+        raise thread_exception["error"]
+
+    placeholder.markdown(full_text)
     return full_text
 
 
@@ -151,7 +182,11 @@ def run_agent(user_query: str, placeholder, use_rag: bool = True):
     ]
 
     for step in range(3):
-        response_text = generate_streaming(messages, placeholder)
+        try:
+            response_text = generate_streaming(messages, placeholder)
+        except Exception as e:
+            placeholder.error(f"Generation failed: {e}")
+            return f"Generation failed: {e}"
 
         if "Final Answer:" in response_text:
             return response_text.split("Final Answer:")[-1].strip()
