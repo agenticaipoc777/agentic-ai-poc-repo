@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Bake the model into the image at BUILD time, not runtime. This is
 # the actual mechanism behind "fully offline" here -- without this,
@@ -26,7 +26,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer; \
 AutoTokenizer.from_pretrained('${MODEL_ID}'); \
 AutoModelForCausalLM.from_pretrained('${MODEL_ID}', torch_dtype='auto')"
 
-COPY app.py .
+COPY app.py rag.py .
+COPY docs/ ./docs/
 
 EXPOSE 8080
 
