@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # the point of an offline model. MODEL_ID must match what app.py uses
 # at runtime -- passed as a build arg so both stay in sync from one
 # source of truth (your deploy command), not hardcoded twice.
+ENV PYTHONUNBUFFERED=1
 ARG MODEL_ID=Qwen/Qwen2.5-7B-Instruct
 ENV MODEL_ID=${MODEL_ID}
 RUN python3 -c "\
