@@ -42,7 +42,7 @@ from vertexai.generative_models import (
 PROJECT_ID = os.environ.get("GCP_PROJECT_ID", "agentic-ai-502518")
 LOCATION = os.environ.get("GCP_LOCATION", "europe-west1")
 BQ_LOCATION = os.environ.get("BQ_LOCATION", "EU")
-MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.5-pro")
+MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
 # Safety caps -- same reasoning as bq_pg_proxy_app: an LLM-generated
 # SQL query against a multi-billion-row table needs a hard ceiling on
@@ -60,30 +60,6 @@ st.set_page_config(page_title="BigQuery Gemini Dashboard", page_icon="📊", lay
 @st.cache_resource
 def get_bq_client():
     return bigquery.Client(project=PROJECT_ID, location=BQ_LOCATION)
-
-
-@st.cache_resource
-def get_schema_context() -> str:
-    """
-    Fetches the full dataset/table/column schema ONCE per process and
-    formats it as plain text for the system prompt -- instead of
-    exposing list_tables as a callable tool the model has to decide
-    to invoke on nearly every question. That decide-then-call-then-
-    respond cycle is a full extra Gemini round trip PER QUERY; since
-    schema doesn't change turn to turn, fetching it once at startup
-    and just telling Gemini directly removes that round trip entirely
-    for the rest of the app's lifetime. This is the single biggest
-    real latency win available here -- threading can't remove a
-    network round trip, but not making the round trip at all does.
-    """
-    result = _list_tables_safe()
-    if "error" in result:
-        return f"(schema lookup failed: {result['error']})"
-    lines = []
-    for dataset, tables in result.items():
-        for t in tables:
-            lines.append(f"- {dataset}.{t['table']}: {', '.join(t['columns'])}")
-    return "\n".join(lines)
 
 
 @st.cache_resource
@@ -109,21 +85,25 @@ def get_gemini_model():
         },
     )
 
-    # list_tables is no longer exposed as a tool -- see
-    # get_schema_context() above. Only run_query remains, so a normal
-    # question is now ONE tool round trip instead of two.
-    bq_tool = Tool(function_declarations=[run_query_decl])
+    list_tables_decl = FunctionDeclaration(
+        name="list_tables",
+        description=(
+            "Lists every dataset and table in the project, with column "
+            "names and types. Call this first if you don't already "
+            "know what tables/columns exist -- never guess table or "
+            "column names."
+        ),
+        parameters={"type": "object", "properties": {}},
+    )
+
+    bq_tool = Tool(function_declarations=[run_query_decl, list_tables_decl])
 
     system_instruction = f"""You are a BigQuery data analyst for project '{PROJECT_ID}'.
 
-Here is the full schema of every table available to you -- you already
-know this, do NOT ask to look it up:
-
-{get_schema_context()}
-
-Use the run_query tool to answer questions with REAL data -- never
-fabricate numbers. This project's tables can be very large (billions
-of rows), so always aggregate in SQL rather than pulling raw rows.
+Use the run_query and list_tables tools to answer questions with REAL
+data -- never fabricate numbers. This project's tables can be very
+large (billions of rows), so always aggregate in SQL rather than
+pulling raw rows.
 
 You do not draw charts yourself -- the application renders all
 visualizations (bar, pie, line, scatter, tables) from whatever data
@@ -205,25 +185,6 @@ TOOL_FUNCS = {"run_query": _run_query_safe, "list_tables": _list_tables_safe}
 # ==============================================================================
 # AGENT LOOP (manual function-calling loop -- transparent, not "magic")
 # ==============================================================================
-
-@st.cache_data(ttl=300, show_spinner=False)
-def ask_agent_cached(prompt: str):
-    """
-    Thin caching wrapper around ask_agent -- identical prompts within
-    a 5-minute window skip the entire Gemini+BigQuery round trip
-    entirely and return instantly. This is a real speedup for actual
-    repeats (re-asking the same question, clicking a bookmark you
-    already ran recently) -- it does NOT make the first ask of a new
-    question faster, since that genuinely has to make the underlying
-    API calls at least once. st.cache_data can't cache the DataFrame
-    directly across Streamlit's serialization boundary as cleanly as
-    plain data, so we cache the row list and rebuild the DataFrame
-    outside the cache.
-    """
-    summary, df = ask_agent(prompt)
-    rows = df.to_dict("records") if df is not None else None
-    return summary, rows
-
 
 def ask_agent(prompt: str):
     """
@@ -381,8 +342,7 @@ with tab_chat:
         with st.chat_message("assistant"):
             with st.spinner("Querying BigQuery via Gemini..."):
                 try:
-                    summary, rows = ask_agent_cached(prompt)
-                    df = pd.DataFrame(rows) if rows else None
+                    summary, df = ask_agent(prompt)
                 except Exception as e:
                     summary, df = f"Agent error: {e}", None
             st.markdown(summary)
