@@ -1,4 +1,27 @@
 # ====================================================================
+# IMPORTS: these three already exist in GCP/GKE (most likely from the
+# earlier "Queued" workflow run that eventually completed in the
+# background while a separate retry also ran) but Terraform's state
+# for THIS run's plan didn't know about them, causing 409 "already
+# exists" errors on apply. Same fix pattern already used for the
+# bq_pg_proxy and llm resources in this project.
+# ====================================================================
+import {
+  to = google_artifact_registry_repository.agent_noadk_repo
+  id = "projects/agentic-ai-502518/locations/europe-west1/repositories/agent-noadk-apps"
+}
+
+import {
+  to = kubernetes_service_account_v1.agent_noadk_sa
+  id = "default/agent-noadk-sa"
+}
+
+import {
+  to = kubernetes_service_v1.agent_noadk_service
+  id = "default/agent-noadk-service"
+}
+
+# ====================================================================
 # AGENT_NOADK: direct Kubernetes deployment (no Cloud Run) --
 # Gemini 2.5 BigQuery agent dashboard, no ADK.
 # ====================================================================
