@@ -21,6 +21,16 @@ import {
   id = "default/agent-noadk-service"
 }
 
+import {
+  to = kubernetes_deployment_v1.agent_noadk
+  id = "default/agent-noadk"
+}
+
+import {
+  to = kubernetes_horizontal_pod_autoscaler_v2.agent_noadk_hpa
+  id = "default/agent-noadk-hpa"
+}
+
 # ====================================================================
 # AGENT_NOADK: direct Kubernetes deployment (no Cloud Run) --
 # Gemini 2.5 BigQuery agent dashboard, no ADK.
