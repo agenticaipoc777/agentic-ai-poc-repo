@@ -12,7 +12,7 @@ COPY app.py .
 ENV GCP_PROJECT_ID=agentic-ai-502518
 ENV GCP_LOCATION=europe-west1
 ENV BQ_LOCATION=EU
-ENV GEMINI_MODEL=gemini-2.5-pro
+ENV GEMINI_MODEL=gemini-2.5-flash
 
 EXPOSE 8080
 

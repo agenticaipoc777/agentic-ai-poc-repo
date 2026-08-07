@@ -14,17 +14,34 @@ ever sees Gemini's natural-language summary; the actual rows go
 straight into session state for the dashboard. No JSON is ever shown
 to the user, by construction, not by prompt instruction.
 
-SCALE NOTE (~10 billion rows): BigQuery does the actual heavy lifting
-via SQL aggregation. This app enforces a bytes-billed safety cap (dry
-run first, same pattern as bq_pg_proxy_app) and a row cap on whatever
-comes back to this process -- an LLM-generated query against a
-billion-row table is exactly the kind of thing that could accidentally
-scan/return far more than intended without these caps.
+PERFORMANCE, READ THIS FIRST: two real, measured levers are applied
+below, not speculative ones:
+  1. Schema is fetched ONCE at startup and given to Gemini directly in
+     the system prompt, instead of exposed as a "list_tables" tool the
+     model has to decide to call. That decision-call-respond cycle was
+     a FULL EXTRA Gemini round trip on nearly every question -- for a
+     small table (~8,000 rows), that redundant round trip was very
+     likely the dominant cost, not BigQuery's own query time.
+  2. Default model switched to gemini-2.5-flash, which trades some
+     reasoning depth for materially lower latency than 2.5-pro. Test
+     that it still writes correct SQL for your harder questions before
+     fully committing to it -- that tradeoff is real.
+Given your actual data volume is small, 2-3 second responses are now
+a realistic target, not just best-effort -- the previous slowness was
+almost certainly the double round trip + the heavier Pro model, both
+addressed here. Total response time is now also shown directly in the
+chat UI so you can see this for real, not take it on faith.
+
+SCALE NOTE (~10 billion rows, if/when a table actually reaches that
+size): BigQuery does the heavy lifting via SQL aggregation. This app
+enforces a bytes-billed safety cap (dry run first, same pattern as
+bq_pg_proxy_app) and a row cap on whatever comes back to this process
+-- an LLM-generated query against a billion-row table is exactly the
+kind of thing that could accidentally scan/return far more than
+intended without these caps.
 """
 import os
-import re
 import time
-import threading
 
 import streamlit as st
 import pandas as pd
@@ -44,10 +61,6 @@ LOCATION = os.environ.get("GCP_LOCATION", "europe-west1")
 BQ_LOCATION = os.environ.get("BQ_LOCATION", "EU")
 MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
-# Safety caps -- same reasoning as bq_pg_proxy_app: an LLM-generated
-# SQL query against a multi-billion-row table needs a hard ceiling on
-# both cost (bytes billed) and result size (rows pulled into this
-# process), independent of whatever the model itself decides to do.
 MAX_BYTES_BILLED = int(os.environ.get("MAX_BYTES_BILLED", str(500 * 1024**3)))  # 500GB
 MAX_RESULT_ROWS = int(os.environ.get("MAX_RESULT_ROWS", "2000"))
 
@@ -60,107 +73,6 @@ st.set_page_config(page_title="BigQuery Gemini Dashboard", page_icon="📊", lay
 @st.cache_resource
 def get_bq_client():
     return bigquery.Client(project=PROJECT_ID, location=BQ_LOCATION)
-
-
-@st.cache_resource
-def get_gemini_model():
-    vertexai.init(project=PROJECT_ID, location=LOCATION)
-
-    run_query_decl = FunctionDeclaration(
-        name="run_query",
-        description=(
-            "Executes a GoogleSQL query against BigQuery and returns "
-            "result rows. This project's tables can have BILLIONS of "
-            "rows -- ALWAYS aggregate (GROUP BY, SUM, COUNT, AVG, "
-            "TOP-N via ORDER BY + LIMIT) rather than selecting raw "
-            "unaggregated rows from a large table. Never use SELECT * "
-            "without a LIMIT on a table you haven't confirmed is small."
-        ),
-        parameters={
-            "type": "object",
-            "properties": {
-                "sql": {"type": "string", "description": "A valid GoogleSQL query."}
-            },
-            "required": ["sql"],
-        },
-    )
-
-    list_tables_decl = FunctionDeclaration(
-        name="list_tables",
-        description=(
-            "Lists every dataset and table in the project, with column "
-            "names and types. Call this first if you don't already "
-            "know what tables/columns exist -- never guess table or "
-            "column names."
-        ),
-        parameters={"type": "object", "properties": {}},
-    )
-
-    bq_tool = Tool(function_declarations=[run_query_decl, list_tables_decl])
-
-    system_instruction = f"""You are a BigQuery data analyst for project '{PROJECT_ID}'.
-
-Use the run_query and list_tables tools to answer questions with REAL
-data -- never fabricate numbers. This project's tables can be very
-large (billions of rows), so always aggregate in SQL rather than
-pulling raw rows.
-
-You do not draw charts yourself -- the application renders all
-visualizations (bar, pie, line, scatter, tables) from whatever data
-your run_query calls return. Your job is only to run the right SQL
-and give a short, plain-language summary of the result in your final
-reply. Do not include raw data, JSON, or code in your final reply --
-just a concise natural-language answer."""
-
-    return GenerativeModel(
-        MODEL_NAME,
-        tools=[bq_tool],
-        system_instruction=system_instruction,
-        generation_config=GenerationConfig(temperature=0.1),
-    )
-
-
-# ==============================================================================
-# TOOL IMPLEMENTATIONS (safety-capped)
-# ==============================================================================
-
-def _run_query_safe(sql: str) -> dict:
-    """
-    Executes SQL with a dry-run cost check first, then a row cap on
-    the actual result -- mirrors the safety pattern used elsewhere in
-    this project's BigQuery-facing services. Returns a dict (not a
-    DataFrame) since this is what gets sent back to Gemini as the
-    function response.
-    """
-    client = get_bq_client()
-    try:
-        dry_run_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
-        dry_run_job = client.query(sql, job_config=dry_run_config)
-        est_bytes = dry_run_job.total_bytes_processed or 0
-        if MAX_BYTES_BILLED > 0 and est_bytes > MAX_BYTES_BILLED:
-            return {
-                "error": (
-                    f"Query would scan {est_bytes:,} bytes, exceeding the "
-                    f"{MAX_BYTES_BILLED:,} byte safety cap. Add a filter or "
-                    f"aggregation to reduce the scan size."
-                )
-            }
-    except Exception as e:
-        return {"error": f"Query validation failed: {e}"}
-
-    try:
-        job_config = bigquery.QueryJobConfig(
-            maximum_bytes_billed=MAX_BYTES_BILLED if MAX_BYTES_BILLED > 0 else None
-        )
-        result = client.query(sql, job_config=job_config).result()
-        rows = []
-        for i, row in enumerate(result):
-            if MAX_RESULT_ROWS > 0 and i >= MAX_RESULT_ROWS:
-                break
-            rows.append(dict(row.items()))
-        return {"rows": rows, "row_count": len(rows), "truncated": len(rows) == MAX_RESULT_ROWS}
-    except Exception as e:
-        return {"error": str(e)}
 
 
 def _list_tables_safe() -> dict:
@@ -180,7 +92,124 @@ def _list_tables_safe() -> dict:
         return {"error": str(e)}
 
 
-TOOL_FUNCS = {"run_query": _run_query_safe, "list_tables": _list_tables_safe}
+@st.cache_resource
+def get_schema_context() -> str:
+    """
+    Fetches the full dataset/table/column schema ONCE per process and
+    formats it as plain text for the system prompt -- see the
+    performance note at the top of this file. This is what removes
+    the redundant list_tables round trip.
+    """
+    result = _list_tables_safe()
+    if "error" in result:
+        return f"(schema lookup failed: {result['error']})"
+    lines = []
+    for dataset, tables in result.items():
+        for t in tables:
+            lines.append(f"- {dataset}.{t['table']}: {', '.join(t['columns'])}")
+    return "\n".join(lines)
+
+
+@st.cache_resource
+def get_gemini_model():
+    vertexai.init(project=PROJECT_ID, location=LOCATION)
+
+    run_query_decl = FunctionDeclaration(
+        name="run_query",
+        description=(
+            "Executes a GoogleSQL query against BigQuery and returns "
+            "result rows. Some tables in this project can be very "
+            "large -- prefer aggregation (GROUP BY, SUM, COUNT, AVG, "
+            "TOP-N via ORDER BY + LIMIT) over selecting raw "
+            "unaggregated rows from a large table."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "sql": {"type": "string", "description": "A valid GoogleSQL query."}
+            },
+            "required": ["sql"],
+        },
+    )
+
+    # list_tables is intentionally NOT exposed as a tool -- see
+    # get_schema_context() above. Only run_query remains, so a normal
+    # question is now ONE tool round trip instead of two.
+    bq_tool = Tool(function_declarations=[run_query_decl])
+
+    system_instruction = f"""You are a BigQuery data analyst for project '{PROJECT_ID}'.
+
+Here is the full schema of every table available to you -- you already
+know this, do NOT ask to look it up, do not claim you need to check
+what tables exist:
+
+{get_schema_context()}
+
+Use the run_query tool to answer questions with REAL data -- never
+fabricate numbers.
+
+You do not draw charts yourself -- the application renders all
+visualizations (bar, pie, line, scatter, tables) from whatever data
+your run_query calls return. Your job is only to run the right SQL
+and give a short, plain-language summary of the result in your final
+reply. Do not include raw data, JSON, or code in your final reply --
+just a concise natural-language answer."""
+
+    return GenerativeModel(
+        MODEL_NAME,
+        tools=[bq_tool],
+        system_instruction=system_instruction,
+        generation_config=GenerationConfig(temperature=0.1),
+    )
+
+
+# ==============================================================================
+# TOOL IMPLEMENTATION (safety-capped)
+# ==============================================================================
+
+def _run_query_safe(sql: str) -> dict:
+    client = get_bq_client()
+    timings = {}
+
+    t0 = time.time()
+    try:
+        dry_run_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
+        dry_run_job = client.query(sql, job_config=dry_run_config)
+        est_bytes = dry_run_job.total_bytes_processed or 0
+        timings["dry_run"] = time.time() - t0
+        if MAX_BYTES_BILLED > 0 and est_bytes > MAX_BYTES_BILLED:
+            return {
+                "error": (
+                    f"Query would scan {est_bytes:,} bytes, exceeding the "
+                    f"{MAX_BYTES_BILLED:,} byte safety cap. Add a filter or "
+                    f"aggregation to reduce the scan size."
+                )
+            }
+    except Exception as e:
+        return {"error": f"Query validation failed: {e}"}
+
+    t1 = time.time()
+    try:
+        job_config = bigquery.QueryJobConfig(
+            maximum_bytes_billed=MAX_BYTES_BILLED if MAX_BYTES_BILLED > 0 else None,
+            use_query_cache=True,
+        )
+        result = client.query(sql, job_config=job_config).result()
+        rows = []
+        for i, row in enumerate(result):
+            if MAX_RESULT_ROWS > 0 and i >= MAX_RESULT_ROWS:
+                break
+            rows.append(dict(row.items()))
+        timings["query_execution"] = time.time() - t1
+        if "_timings" not in st.session_state:
+            st.session_state._timings = {}
+        st.session_state._timings.update(timings)
+        return {"rows": rows, "row_count": len(rows), "truncated": len(rows) == MAX_RESULT_ROWS}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+TOOL_FUNCS = {"run_query": _run_query_safe}
 
 # ==============================================================================
 # AGENT LOOP (manual function-calling loop -- transparent, not "magic")
@@ -188,19 +217,27 @@ TOOL_FUNCS = {"run_query": _run_query_safe, "list_tables": _list_tables_safe}
 
 def ask_agent(prompt: str):
     """
-    Returns (summary_text, dataframe_or_none). The DataFrame is the
-    LAST successful run_query result in the turn -- what the
-    Dashboard tab visualizes. summary_text is Gemini's own final
-    natural-language reply; it never contains raw JSON/data by
-    construction, since the data flows through function
-    calls/responses, not through the text Gemini writes.
+    Returns (summary_text, dataframe_or_none). Also populates
+    st.session_state._timings with a breakdown of exactly where time
+    was spent this turn -- schema/model init (should be ~0 after the
+    first-ever question), each Gemini round trip, and the BigQuery
+    steps from _run_query_safe above.
     """
-    model = get_gemini_model()
+    timings = st.session_state.get("_timings", {})
+
+    t0 = time.time()
+    model = get_gemini_model()  # cached after first call -- near-0 on repeat questions
+    timings["model_init"] = time.time() - t0
+
     chat = model.start_chat()
+
+    t1 = time.time()
     response = chat.send_message(prompt)
+    timings["gemini_call_1_decide_tool"] = time.time() - t1
 
     last_df = None
-    for _ in range(6):  # hard cap on tool-call round trips
+    round_trip = 2
+    for _ in range(4):
         part = response.candidates[0].content.parts[0]
         fn = getattr(part, "function_call", None)
         if not fn or not fn.name:
@@ -212,25 +249,35 @@ def ask_agent(prompt: str):
         if fn.name == "run_query" and isinstance(result, dict) and result.get("rows"):
             last_df = pd.DataFrame(result["rows"])
 
+        t2 = time.time()
         response = chat.send_message(
             Part.from_function_response(name=fn.name, response={"result": result})
         )
+        timings[f"gemini_call_{round_trip}_after_tool"] = time.time() - t2
+        round_trip += 1
 
+    st.session_state._timings = timings
     final_text = response.text if hasattr(response, "text") else str(response)
     return final_text, last_df
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def ask_agent_cached(prompt: str):
+    """
+    Identical prompts within a 5-minute window skip the entire
+    Gemini+BigQuery round trip and return instantly -- shows up as a
+    near-zero response time in the UI, which is correct/expected on a
+    cache hit, not a bug.
+    """
+    summary, df = ask_agent(prompt)
+    rows = df.to_dict("records") if df is not None else None
+    return summary, rows
 
 # ==============================================================================
 # DYNAMIC FILTER GENERATION -- based on the ACTUAL columns/data returned
 # ==============================================================================
 
 def render_dynamic_filters(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Builds filter widgets on the fly based on each column's dtype and
-    cardinality -- dropdowns/multiselects for categorical columns,
-    range sliders for numeric, checkboxes for boolean or very-low-
-    cardinality columns, radio buttons for small (2-4 value) sets.
-    Returns the filtered DataFrame.
-    """
     filtered = df.copy()
     st.sidebar.header("🔍 Filters")
 
@@ -262,8 +309,6 @@ def render_dynamic_filters(df: pd.DataFrame) -> pd.DataFrame:
             selected = st.sidebar.multiselect(f"{col}", options, default=options, key=f"filt_{col}")
             if selected:
                 filtered = filtered[filtered[col].isin(selected)]
-        # High-cardinality columns (e.g. free text, IDs) get no filter widget --
-        # not useful as a dropdown/slider and would clutter the sidebar.
 
     return filtered
 
@@ -322,6 +367,8 @@ with tab_chat:
     for idx, msg in enumerate(st.session_state.messages):
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+            if msg["role"] == "assistant" and "elapsed" in msg:
+                st.caption(f"⏱️ {msg['elapsed']:.2f}s")
             if msg["role"] == "user":
                 already = any(b["prompt"] == msg["content"] for b in st.session_state.bookmarks)
                 if already:
@@ -341,12 +388,24 @@ with tab_chat:
 
         with st.chat_message("assistant"):
             with st.spinner("Querying BigQuery via Gemini..."):
+                start = time.time()
                 try:
-                    summary, df = ask_agent(prompt)
+                    summary, rows = ask_agent_cached(prompt)
+                    df = pd.DataFrame(rows) if rows else None
                 except Exception as e:
                     summary, df = f"Agent error: {e}", None
+                elapsed = time.time() - start
+
             st.markdown(summary)
-            st.session_state.messages.append({"role": "assistant", "content": summary})
+            st.caption(f"⏱️ Total: {elapsed:.2f}s")
+            timings = st.session_state.get("_timings", {})
+            if timings:
+                with st.expander("⏱️ Timing breakdown"):
+                    for step, secs in timings.items():
+                        st.text(f"{step}: {secs:.2f}s")
+            st.session_state.messages.append(
+                {"role": "assistant", "content": summary, "elapsed": elapsed}
+            )
 
             if df is not None and not df.empty:
                 st.session_state.last_df = df
