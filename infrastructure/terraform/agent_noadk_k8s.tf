@@ -169,9 +169,16 @@ resource "kubernetes_service_v1" "agent_noadk_service" {
   metadata {
     name      = "agent-noadk-service"
     namespace = "default"
-    annotations = {
-      "networking.gke.io/load-balancer-type" = "Internal"
-    }
+    # REMOVED per explicit request: was
+    # "networking.gke.io/load-balancer-type" = "Internal".
+    # This Service is now publicly reachable on the open internet.
+    # This app has NO authentication of its own -- anyone who
+    # reaches this IP can query BigQuery through Gemini with no
+    # login required. Pair this with a GCP firewall rule restricting
+    # inbound access to known IPs (see the accompanying steps), and
+    # treat this as temporary/testing-only -- Identity-Aware Proxy is
+    # the properly-secured way to make this browser-accessible
+    # long-term.
   }
   spec {
     selector = { app = "agent-noadk" }
