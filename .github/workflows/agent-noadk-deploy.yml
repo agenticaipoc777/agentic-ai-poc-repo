@@ -1,0 +1,79 @@
+name: Deploy No-ADK Agent to Kubernetes
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'agent_noadk/**'
+      - 'infrastructure/terraform/agent_noadk_k8s.tf'
+      - 'infrastructure/terraform/agent_noadk_variable.tf'
+      - '.github/workflows/agent-noadk-deploy.yml'
+
+env:
+  PROJECT_ID: agentic-ai-502518
+  REGION: europe-west1
+  REPO_NAME: agent-noadk-apps
+  IMAGE_NAME: agent-noadk
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker Authentication
+      run: |
+        gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+    - name: Build and Push Docker Image
+      run: |
+        IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}"
+        docker build -t "$IMAGE:${{ env.IMAGE_TAG }}" -t "$IMAGE:latest" ./agent_noadk
+        docker push "$IMAGE:${{ env.IMAGE_TAG }}"
+        docker push "$IMAGE:latest"
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_wrapper: false
+
+    - name: Terraform Init
+      working-directory: infrastructure/terraform
+      run: terraform init
+
+    - name: Terraform Validate
+      working-directory: infrastructure/terraform
+      run: terraform validate
+
+    - name: Terraform Plan
+      working-directory: infrastructure/terraform
+      run: |
+        terraform plan \
+          -target=google_artifact_registry_repository.agent_noadk_repo \
+          -target=kubernetes_service_account_v1.agent_noadk_sa \
+          -target=google_service_account_iam_member.agent_noadk_workload_identity \
+          -target=google_project_iam_member.agent_noadk_vertex_user \
+          -target=kubernetes_deployment_v1.agent_noadk \
+          -target=kubernetes_horizontal_pod_autoscaler_v2.agent_noadk_hpa \
+          -target=kubernetes_service_v1.agent_noadk_service \
+          -var="agent_noadk_image_tag=${{ env.IMAGE_TAG }}" \
+          -out=agent_noadk.tfplan
+
+    - name: Terraform Apply
+      working-directory: infrastructure/terraform
+      run: terraform apply -auto-approve agent_noadk.tfplan
